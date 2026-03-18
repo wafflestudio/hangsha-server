@@ -1,6 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.2.0"
-    kotlin("plugin.serialization") version "2.2.0"
+    kotlin("jvm") version "2.2.21"
+    kotlin("plugin.serialization") version "2.2.21"
+    id("io.spring.dependency-management") version "1.1.7"
     application
 }
 
@@ -11,16 +12,22 @@ repositories {
     mavenCentral()
 }
 
+dependencyManagement {
+    imports {
+        mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.9")
+    }
+}
+
 dependencies {
+    implementation(project(":"))
+    implementation("org.springframework.boot:spring-boot")
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.microsoft.playwright:playwright:1.57.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-    // For crawler: json parser
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")
-
-    // 로그(선택)
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.slf4j:slf4j-simple:2.0.16")
 
     testImplementation(kotlin("test"))
@@ -35,6 +42,5 @@ kotlin {
 }
 
 application {
-    // 아래 Main.kt를 교체할 거라 이 값 유지
     mainClass.set("org.example.MainKt")
 }
