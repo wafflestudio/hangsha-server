@@ -1,4 +1,4 @@
-package org.example.crawler
+package com.team1.hangsha.batch.crawler
 
 import com.microsoft.playwright.Browser
 import com.microsoft.playwright.BrowserType

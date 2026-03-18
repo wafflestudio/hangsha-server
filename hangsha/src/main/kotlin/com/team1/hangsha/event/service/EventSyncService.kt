@@ -11,12 +11,9 @@ import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventRepository
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.nio.file.Files
-import java.nio.file.Path
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -28,7 +25,6 @@ class EventSyncService(
     private val eventRepository: EventRepository,
     private val categoryGroupRepository: CategoryGroupRepository,
     private val categoryRepository: CategoryRepository,
-    @Value("\${crawler.events-json-path}") private val eventsJsonPath: String,
 ) {
 
     data class SyncResult(val total: Int, val upserted: Int, val skipped: Int)

@@ -119,9 +119,6 @@ class EventService(
         return event.toDetailResponse(auth = userId != null, matchedPriority = matchedPriority, isBookmarked = isBookmarked)
     }
 
-    // 기존 호출부 호환용
-    fun getEventDetail(eventId: Long): DetailEventResponse = getEventDetail(eventId, null)
-
     fun getDayEvents(
         date: LocalDate,
         page: Int,

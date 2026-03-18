@@ -83,9 +83,6 @@ jwt:
   access-expiration-ms: 3600000
   refresh-expiration-ms: 1209600000
 
-crawler:
-  events-json-path: tools/extra-snu-crawler/events.json
-
 oauth2:
   google:
     client-id: ${GOOGLE_CLIENT_ID:local-google-client-id}
