@@ -28,13 +28,21 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Server Image
         uses: docker/build-push-action@v4
         with:
           context: ./hangsha
           file: ./hangsha/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/campus-calendar-server:latest
+
+      - name: Build and Push Batch Image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./hangsha
+          file: ./hangsha/batch/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/campus-calendar-batch:latest
 
       - name: Deploy to EC2 (debug)
         uses: appleboy/ssh-action@v1.0.3
@@ -101,13 +109,29 @@ jobs:
                 networks:
                   - ${NET}
                 restart: always
+            
+              batch:
+                image: ${DOCKER_USERNAME}/campus-calendar-batch:latest
+                container_name: campus-batch
+                env_file:
+                  - .env
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+                  SPRING_DATASOURCE_USERNAME: ${DB_USER}
+                  SPRING_DATASOURCE_PASSWORD: ${DB_PASS}
+                networks:
+                  - ${NET}
+                restart: "no"
+                profiles:
+                  - batch
+            
             networks:
               ${NET}:
                 external: true
-            EOF
+              EOF
 
             COMPOSE="docker compose -p ${PROJECT} -f docker-compose.prod.yml"
-            $COMPOSE pull app
+            $COMPOSE pull app batch
             $COMPOSE up -d --no-deps app
 
             echo "=== ps ==="
@@ -137,3 +161,6 @@ jobs:
             docker logs --tail 400 campus-server || true
             docker exec campus-server sh -lc 'wget -qS -O- http://127.0.0.1:8080/api/v1/health 2>&1 | head -n 80 || true' || true
             curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
+            
+            echo "=== batch dry run ==="
+            $COMPOSE --profile batch run --rm batch --startPage=1 --maxPages=1 || true

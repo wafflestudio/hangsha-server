@@ -1,4 +1,4 @@
-package org.example.crawler
+package com.team1.hangsha.batch.crawler
 
 import com.microsoft.playwright.Browser
 import com.microsoft.playwright.BrowserType
@@ -88,7 +88,7 @@ class ExtraSnuCrawler(
 
     /**
      * ✅ 상세 크롤링 (조건부 실행 지원)
-     * - init 모드에서 "마감" 스킵 같은 정책을 main에서 람다로 주입 가능
+     * - init 모드에서 "모집마감" 스킵 같은 정책을 main에서 람다로 주입 가능
      */
     fun enrichDetails(
         events: List<ProgramEvent>,
@@ -222,7 +222,7 @@ class ExtraSnuCrawler(
         val onclick = card.selectFirst("a[onclick*=global.write]")?.attr("onclick")?.normalize()
         val dataSeq = onclick?.let { Regex("""global\.write\('([^']+)'""").find(it)?.groupValues?.get(1) }
 
-        // status ("모집중" / "마감임박" / "마감" ...)
+        // status ("모집중" / "마감임박" / "모집마감" ...)
         val status = card.selectFirst(".label_box a.btn01 span")?.text()?.normalize()
             ?: card.selectFirst(".label_box a.btn01")?.text()?.normalize()
 
