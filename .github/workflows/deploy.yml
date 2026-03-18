@@ -161,3 +161,6 @@ jobs:
             docker logs --tail 400 campus-server || true
             docker exec campus-server sh -lc 'wget -qS -O- http://127.0.0.1:8080/api/v1/health 2>&1 | head -n 80 || true' || true
             curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
+            
+            echo "=== batch dry run ==="
+            $COMPOSE --profile batch run --rm batch --startPage=1 --maxPages=1 || true
