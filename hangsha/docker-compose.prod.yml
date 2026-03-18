@@ -20,6 +20,19 @@ services:
         condition: service_healthy
     restart: always
 
+  batch:
+    image: ${DOCKER_USERNAME}/campus-calendar-batch:latest
+    environment:
+      TZ: Asia/Seoul
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/campus_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - batch
+
   db:
     image: mysql:8.0
     container_name: campus-mysql
