@@ -75,6 +75,10 @@ jobs:
               mv "$APP_DIR/hangsha/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
               rm -rf "$APP_DIR/hangsha"
             fi
+            
+            if [ -f "/home/ubuntu/.env" ]; then
+            cp /home/ubuntu/.env "$APP_DIR/.env"
+            fi
 
             cd "$APP_DIR"
 
