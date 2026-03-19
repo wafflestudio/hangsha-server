@@ -2,13 +2,15 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
@@ -22,13 +24,13 @@ jobs:
           chmod +x gradlew
           ./gradlew clean build -x test
 
-      - name: Login to Docker Hub
+      - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Server Image
+      - name: Build and push server image
         uses: docker/build-push-action@v4
         with:
           context: ./hangsha
@@ -36,7 +38,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/campus-calendar-server:latest
 
-      - name: Build and Push Batch Image
+      - name: Build and push batch image
         uses: docker/build-push-action@v4
         with:
           context: ./hangsha
@@ -44,7 +46,16 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/campus-calendar-batch:latest
 
-      - name: Deploy to EC2 (debug)
+      - name: Upload docker-compose.prod.yml to EC2
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_KEY }}
+          source: "hangsha/docker-compose.prod.yml"
+          target: "/home/ubuntu/campus"
+
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -52,115 +63,32 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           port: 22
           timeout: 30s
-          command_timeout: 40m
+          command_timeout: 20m
           script: |
             set -euo pipefail
+
+            APP_DIR=/home/ubuntu/campus
+            mkdir -p "$APP_DIR"
+
+            # scp-action uploads the parent folder too, so move it into place
+            if [ -f "$APP_DIR/hangsha/docker-compose.prod.yml" ]; then
+              mv "$APP_DIR/hangsha/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
+              rm -rf "$APP_DIR/hangsha"
+            fi
+
+            cd "$APP_DIR"
+
             echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
             export DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
-            PROJECT="campus"
-            NET="${PROJECT}_default"
+            export DB_NAME="campus_db"
+            export DB_USER="user"
+            export DB_PASS="password"
+            export DB_ROOT_PASSWORD="root"
 
-            # ==== DB settings (keep in sync with your DB container) ====
-            DB_NAME="campus_db"
-            DB_USER="user"
-            DB_PASS="password"
-            # ===========================================================
+            docker compose -f docker-compose.prod.yml pull app batch db
+            docker compose -f docker-compose.prod.yml up -d db
+            docker compose -f docker-compose.prod.yml up -d app
 
-            docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET"
-
-            # Find DB container (campus-mysql or project-prefixed _campus-mysql)
-            DB_CONTAINER="$(docker ps -a --format '{{.Names}}' | grep -E '(^campus-mysql$|_campus-mysql$)' | head -n1 || true)"
-            if [ -z "$DB_CONTAINER" ]; then
-              DB_CONTAINER="$(docker ps -a --filter 'ancestor=mysql:8.0' --format '{{.Names}}' | head -n1 || true)"
-            fi
-            if [ -z "$DB_CONTAINER" ]; then
-              echo "ERROR: No DB container found."; docker ps -a; exit 1
-            fi
-
-            docker start "$DB_CONTAINER" >/dev/null 2>&1 || true
-
-            # Ensure hostname "db" is ALWAYS resolvable inside the network
-            docker network disconnect "$NET" "$DB_CONTAINER" >/dev/null 2>&1 || true
-            docker network connect --alias db "$NET" "$DB_CONTAINER" >/dev/null 2>&1 || true
-
-            # (Optional) quick DNS check
-            docker run --rm --network "$NET" busybox nslookup db || true
-
-            docker rm -f campus-server 2>/dev/null || true
-            docker ps -a --filter "name=_campus-server" -q | xargs -r docker rm -f
-
-            cat > docker-compose.prod.yml <<EOF
-            version: '3.8'
-            services:
-              app:
-                image: ${DOCKER_USERNAME}/campus-calendar-server:latest
-                container_name: campus-server
-                ports:
-                  - "8080:8080"
-                volumes:
-                  - /data/uploads:/data/uploads
-                env_file:
-                  - .env
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-                  SPRING_DATASOURCE_USERNAME: ${DB_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${DB_PASS}
-                networks:
-                  - ${NET}
-                restart: always
-            
-              batch:
-                image: ${DOCKER_USERNAME}/campus-calendar-batch:latest
-                container_name: campus-batch
-                env_file:
-                  - .env
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-                  SPRING_DATASOURCE_USERNAME: ${DB_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${DB_PASS}
-                networks:
-                  - ${NET}
-                restart: "no"
-                profiles:
-                  - batch
-            
-            networks:
-              ${NET}:
-                external: true
-              EOF
-
-            COMPOSE="docker compose -p ${PROJECT} -f docker-compose.prod.yml"
-            $COMPOSE pull app batch
-            $COMPOSE up -d --no-deps app
-
-            echo "=== ps ==="
-            docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-
-            echo "=== app state ==="
-            docker inspect -f 'status={{.State.Status}} restarting={{.State.Restarting}} restartCount={{.RestartCount}} exit={{.State.ExitCode}} startedAt={{.State.StartedAt}}' campus-server || true
-
-            echo "=== docker logs (tail 400) ==="
-            docker logs --tail 400 campus-server || true
-
-            echo "=== inside container: ps/net/health ==="
-            docker exec campus-server sh -lc '
-              set -x
-              ps aux || true
-              (ss -lntp || netstat -lntp) 2>/dev/null || true
-              env | grep -E "SPRING_|JAVA|SERVER" || true
-              (wget -qS -O- http://127.0.0.1:8080/ 2>&1 | head -n 20) || true
-              (wget -qS -O- http://127.0.0.1:8080/api/v1/health 2>&1 | head -n 50) || true
-            ' || true
-
-            echo "=== host curl ==="
-            curl -sS -D- http://127.0.0.1:8080/api/v1/health || true
-
-            echo "=== wait 120s then curl ==="
-            sleep 120
-            docker logs --tail 400 campus-server || true
-            docker exec campus-server sh -lc 'wget -qS -O- http://127.0.0.1:8080/api/v1/health 2>&1 | head -n 80 || true' || true
-            curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
-            
-            echo "=== batch dry run ==="
-            $COMPOSE --profile batch run --rm batch --startPage=1 --maxPages=1 || true
+            docker compose -f docker-compose.prod.yml ps
+            docker logs --tail 200 campus-server || true
