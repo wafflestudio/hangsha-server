@@ -1,12 +1,14 @@
-FROM gradle:8.10-jdk17 AS builder
+FROM eclipse-temurin:17-jdk-alpine
+
 WORKDIR /app
 
-COPY . .
-RUN gradle :batch:bootJar --no-daemon
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
+    && echo "Asia/Seoul" > /etc/timezone
 
-FROM eclipse-temurin:17-jre
-WORKDIR /app
+ENV TZ=Asia/Seoul
 
-COPY --from=builder /app/batch/build/libs/*.jar /app/hangsha-batch.jar
+ARG JAR_FILE=batch/build/libs/*.jar
+COPY ${JAR_FILE} app.jar
 
-ENTRYPOINT ["java", "-jar", "/app/hangsha-batch.jar"]
+ENTRYPOINT ["java", "-Duser.timezone=Asia/Seoul", "-jar", "/app/app.jar"]

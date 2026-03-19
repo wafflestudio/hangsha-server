@@ -90,8 +90,7 @@ jobs:
             export DB_PASS="password"
             export DB_ROOT_PASSWORD="root"
 
-            docker compose -f docker-compose.prod.yml pull app batch db
-            docker compose -f docker-compose.prod.yml up -d db
+            docker compose -f docker-compose.prod.yml pull app batch 
             docker compose -f docker-compose.prod.yml up -d app
 
             docker compose -f docker-compose.prod.yml ps
