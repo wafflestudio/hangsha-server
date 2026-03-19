@@ -70,14 +70,13 @@ jobs:
             APP_DIR=/home/ubuntu/campus
             mkdir -p "$APP_DIR"
 
-            # scp-action uploads the parent folder too, so move it into place
             if [ -f "$APP_DIR/hangsha/docker-compose.prod.yml" ]; then
               mv "$APP_DIR/hangsha/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
               rm -rf "$APP_DIR/hangsha"
             fi
-            
+
             if [ -f "/home/ubuntu/.env" ]; then
-            cp /home/ubuntu/.env "$APP_DIR/.env"
+              cp /home/ubuntu/.env "$APP_DIR/.env"
             fi
 
             cd "$APP_DIR"
@@ -90,8 +89,8 @@ jobs:
             export DB_PASS="password"
             export DB_ROOT_PASSWORD="root"
 
-            docker compose -f docker-compose.prod.yml pull app batch 
-            docker compose -f docker-compose.prod.yml up -d app
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
 
             docker compose -f docker-compose.prod.yml ps
             docker logs --tail 200 campus-server || true

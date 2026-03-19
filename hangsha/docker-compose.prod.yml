@@ -11,7 +11,7 @@ services:
       MYSQL_USER: ${DB_USER:-user}
       MYSQL_PASSWORD: ${DB_PASS:-password}
     volumes:
-      - /home/ubuntu/campus/db_data:/var/lib/mysql
+      - campus_mysql_data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: always
     healthcheck:
@@ -25,8 +25,6 @@ services:
     container_name: campus-server
     ports:
       - "8080:8080"
-    env_file:
-      - .env
     environment:
       TZ: Asia/Seoul
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-campus_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
@@ -43,8 +41,6 @@ services:
 
   batch:
     image: ${DOCKER_USERNAME}/campus-calendar-batch:latest
-    env_file:
-      - .env
     environment:
       TZ: Asia/Seoul
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-campus_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
@@ -56,3 +52,8 @@ services:
     restart: "no"
     profiles:
       - batch
+
+volumes:
+  campus_mysql_data:
+    external: true
+    name: 00d2acb4c475bf0e499fbe7fd5e1f6655973da9cdf51e8fdcca17a00a9d5f70c
