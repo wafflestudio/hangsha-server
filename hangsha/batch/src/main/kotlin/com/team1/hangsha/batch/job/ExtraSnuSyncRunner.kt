@@ -38,24 +38,7 @@ class ExtraSnuSyncRunner(
             val events = if (!opt.withDetails) {
                 baseEvents
             } else {
-                val firstPass = crawler.enrichDetails(baseEvents) { e ->
-                    e.status != "모집마감"
-                }
-
-                val needFallbackDetail = firstPass
-                    .filter { e -> e.status == "모집마감" && isFallbackCandidate(e) }
-                    .associateBy { it.dataSeq }
-
-                if (needFallbackDetail.isEmpty()) {
-                    firstPass
-                } else {
-                    val retried = crawler.enrichDetails(needFallbackDetail.values.toList()) { true }
-                        .associateBy { it.dataSeq }
-
-                    firstPass.map { e ->
-                        retried[e.dataSeq] ?: e
-                    }
-                }
+                crawler.enrichDetails(baseEvents) //{ e -> e.status != "모집마감" }
             }
 
             val result = eventSyncService.sync(events.map { it.toCrawledProgramEvent() })
@@ -63,12 +46,6 @@ class ExtraSnuSyncRunner(
         }
 
         exitProcess(0)
-    }
-
-    private fun isFallbackCandidate(e: ProgramEvent): Boolean {
-        if (e.detailSessions.isNotEmpty()) return false
-        if (e.activityStart.isNullOrBlank() || e.activityEnd.isNullOrBlank()) return false
-        return e.activityStart == e.activityEnd
     }
 }
 
