@@ -4,6 +4,7 @@ import com.microsoft.playwright.Browser
 import com.microsoft.playwright.BrowserType
 import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
+import com.microsoft.playwright.options.LoadState
 import com.microsoft.playwright.options.WaitUntilState
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -184,10 +185,16 @@ class ExtraSnuCrawler(
                 if (isDetail(curUrl)) {
                     runCatching {
                         pwPage.waitForSelector(
-                            "table.table.t_view.add_tr",
+                            "th:has-text('교육(활동)기간')",
                             Page.WaitForSelectorOptions().setTimeout(8_000.0)
                         )
+                    }.onFailure {
+                        runCatching {
+                            pwPage.waitForLoadState(LoadState.NETWORKIDLE)
+                        }
+                        pwPage.waitForTimeout(1200.0)
                     }
+
                     // navigating 중 content() 터질 수 있어 방어
                     val html = try {
                         pwPage.content()

@@ -95,3 +95,5 @@ jobs:
 
             docker compose -f docker-compose.prod.yml ps
             docker logs --tail 200 campus-server || true
+            
+            docker image prune -f
