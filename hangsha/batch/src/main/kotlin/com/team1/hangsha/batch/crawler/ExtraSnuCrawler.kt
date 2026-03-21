@@ -57,27 +57,6 @@ class ExtraSnuCrawler(
         runCatching { playwright.close() }
     }
 
-    fun crawlAll(startPage: Int = 1, maxPages: Int = 10_000): List<ProgramEvent> {
-        val results = mutableListOf<ProgramEvent>()
-        val seenSignatures = mutableSetOf<String>()
-
-        var page = startPage
-        while (page < startPage + maxPages) {
-            val html = fetchListPage(page) ?: break
-            val events = parseListHtml(html)
-            if (events.isEmpty()) break
-
-            val sig = signatureOf(events)
-            if (!seenSignatures.add(sig)) break // 같은 페이지 반복 방지
-
-            results += events
-            page++
-
-            if (delayMsBetweenPages > 0) Thread.sleep(delayMsBetweenPages)
-        }
-        return results
-    }
-
     fun parseListHtml(html: String): List<ProgramEvent> {
         val doc = Jsoup.parse(html, baseUrl)
         val cards = doc.select("div.lica_gp")
@@ -477,5 +456,10 @@ class ExtraSnuCrawler(
                 startTime = startTime,
                 endTime = endTime
             )
+    }
+
+    fun crawlPage(pageNo: Int): List<ProgramEvent> {
+        val html = fetchListPage(pageNo) ?: return emptyList()
+        return parseListHtml(html)
     }
 }

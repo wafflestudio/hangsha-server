@@ -1,15 +1,14 @@
 package com.team1.hangsha.batch.job
 
-import com.team1.hangsha.event.dto.core.CrawledDetailSession
-import com.team1.hangsha.event.dto.core.CrawledProgramEvent
-import com.team1.hangsha.event.service.EventSyncService
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
+import com.team1.hangsha.event.dto.core.CrawledDetailSession
+import com.team1.hangsha.event.dto.core.CrawledProgramEvent
+import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
-import java.io.File
 import kotlin.system.exitProcess
 
 @Component
@@ -22,29 +21,42 @@ class ExtraSnuSyncRunner(
 
         val applyChkCodes = listOf("0001", "0002", "0003", "0004")
 
+        var totalUpserted = 0
+        var totalCrawled = 0
+        var totalSkipped = 0
+
         ExtraSnuCrawler(
             delayMsBetweenPages = opt.delayMs,
             delayMsBetweenDetails = opt.detailDelayMs,
             applyChkCodes = applyChkCodes
         ).use { crawler ->
-            val baseEvents = when (opt.fromFile) {
-                null -> crawler.crawlAll(startPage = opt.startPage, maxPages = opt.maxPages)
-                else -> {
-                    val html = File(opt.fromFile).readText(Charsets.UTF_8)
-                    crawler.parseListHtml(html)
+            val endPage = opt.startPage + opt.maxPages - 1
+
+            for (page in opt.startPage..endPage) {
+                val baseEvents = crawler.crawlPage(page)
+
+                if (baseEvents.isEmpty()) {
+                    println("Page $page: no events, stopping.")
+                    break
                 }
-            }
 
-            val events = if (!opt.withDetails) {
-                baseEvents
-            } else {
-                crawler.enrichDetails(baseEvents) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
-            }
+                val events = if (!opt.withDetails) {
+                    baseEvents
+                } else {
+                    crawler.enrichDetails(baseEvents) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
+                }
 
-            val result = eventSyncService.sync(events.map { it.toCrawledProgramEvent() })
-            println("Synced ${result.upserted} rows from ${result.total} crawled events (skipped=${result.skipped})")
+                val result = eventSyncService.sync(events.map { it.toCrawledProgramEvent() })
+
+                totalUpserted += result.upserted
+                totalCrawled += result.total
+                totalSkipped += result.skipped
+
+                println("Page $page synced: upserted=${result.upserted}, total=${result.total}, skipped=${result.skipped}")
+            }
         }
 
+        println("Synced $totalUpserted rows from $totalCrawled crawled events (skipped=$totalSkipped)")
         exitProcess(0)
     }
 }
@@ -55,7 +67,6 @@ private data class BatchArgs(
     val delayMs: Long = 200,
     val withDetails: Boolean = true,
     val detailDelayMs: Long = 100,
-    val fromFile: String? = null
 ) {
     companion object {
         fun from(args: ApplicationArguments): BatchArgs {
@@ -73,7 +84,6 @@ private data class BatchArgs(
                 delayMs = single("delayMs")?.toLong() ?: 200L,
                 withDetails = withDetails,
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
-                fromFile = single("fromFile")
             )
         }
     }
