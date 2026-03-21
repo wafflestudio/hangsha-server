@@ -48,10 +48,8 @@ class ExtraSnuCrawler(
             else route.resume()
         }
     }
-    private val pwPage = pwContext.newPage()
 
     override fun close() {
-        runCatching { pwPage.close() }
         runCatching { pwContext.close() }
         runCatching { browser.close() }
         runCatching { playwright.close() }
@@ -79,9 +77,17 @@ class ExtraSnuCrawler(
             if (dataSeq.isNullOrBlank()) return@map e
             if (!shouldFetch(e)) return@map e
 
-            val html = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
-            val sessions = parseDetailSessions(html)
-            val mainHtml = parseMainContentHtml(html)
+            val html1 = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
+            var sessions = parseDetailSessions(html1)
+            var mainHtml = parseMainContentHtml(html1)
+
+            if (sessions.isEmpty()) {
+                val html2 = fetchDetailPageByPlaywright(dataSeq)
+                if (html2 != null) {
+                    sessions = parseDetailSessions(html2)
+                    mainHtml = parseMainContentHtml(html2)
+                }
+            }
 
             if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
             e.copy(detailSessions = sessions, mainContentHtml = mainHtml)
@@ -124,7 +130,6 @@ class ExtraSnuCrawler(
      * ✅ NetFunnel/Wait.jsp 때문에 OkHttp만으로는 302 루프가 날 수 있음
      * Playwright로 실제 브라우저처럼 진입해서 최종 DOM(html)을 가져온다.
      *
-     * - pwPage 재사용
      * - wait.jsp / netfunnel 감지 시 재시도 + 백오프(지터)
      */
     private fun fetchDetailPageByPlaywright(dataSeq: String): String? {
@@ -134,9 +139,11 @@ class ExtraSnuCrawler(
         fun isWait(u: String) = u.contains("/wait.jsp")
         fun isDetail(u: String) = u.contains("/ptfol/imng/icmpNsbjtPgm/findIcmpNsbjtPgmInfo.do")
 
+        val page = pwContext.newPage()
+
         return try {
             // ✅ domcontentloaded 기다리지 말고 'commit'까지만 (응답만 받으면 됨)
-            pwPage.navigate(
+            page.navigate(
                 viewUrl,
                 Page.NavigateOptions()
                     .setWaitUntil(WaitUntilState.COMMIT)
@@ -144,42 +151,54 @@ class ExtraSnuCrawler(
             )
 
             val hardDeadlineMs = System.currentTimeMillis() + 120_000L // 총 2분까지 기다림
-            var lastUrl = pwPage.url()
+            var lastUrl = page.url()
 
             while (System.currentTimeMillis() < hardDeadlineMs) {
-                val curUrl = pwPage.url()
+                val curUrl = page.url()
                 if (curUrl != lastUrl && debug) println("[PW] url => $curUrl")
                 lastUrl = curUrl
 
-                if (curUrl == "https://nsso.snu.ac.kr/sso/usr/snu/mfa/login/view") { return null }
+                if (curUrl == "https://nsso.snu.ac.kr/sso/usr/snu/mfa/login/view") {
+                    return null
+                }
 
                 // 1) wait.jsp면: 서버가 대기열 처리 중. 재navigate 하지 말고 잠깐 기다림.
                 if (isWait(curUrl)) {
                     if (debug) println("[PW] wait.jsp... (sleep)")
-                    pwPage.waitForTimeout(800.0 + Math.random() * 1200.0) // 0.8~2.0s
+                    page.waitForTimeout(800.0 + Math.random() * 1200.0) // 0.8~2.0s
                     continue
                 }
 
-                // 2) 최종 상세(findIcmp...)로 왔으면: 필요한 DOM이 생길 때까지 조금만 기다렸다가 content
+                // 2) 최종 상세(findIcmp...)로 왔으면: 실제 기간 값이 들어올 때까지 기다렸다가 content
                 if (isDetail(curUrl)) {
                     runCatching {
-                        pwPage.waitForSelector(
-                            "th:has-text('교육(활동)기간')",
-                            Page.WaitForSelectorOptions().setTimeout(8_000.0)
+                        page.waitForFunction(
+                            """
+                        () => {
+                          const ths = Array.from(document.querySelectorAll("th"));
+                          const th = ths.find(x => (x.textContent || "").includes("교육(활동)기간"));
+                          if (!th) return false;
+                          const td = th.nextElementSibling;
+                          if (!td) return false;
+                          const txt = (td.textContent || "").replace(/\s+/g, " ").trim();
+                          return /\d{4}\.\d{2}\.\d{2}\./.test(txt) && /\d{2}:\d{2}/.test(txt);
+                        }
+                        """.trimIndent(),
+                            Page.WaitForFunctionOptions().setTimeout(10_000.0)
                         )
                     }.onFailure {
                         runCatching {
-                            pwPage.waitForLoadState(LoadState.NETWORKIDLE)
+                            page.waitForLoadState(LoadState.NETWORKIDLE)
                         }
-                        pwPage.waitForTimeout(1200.0)
+                        page.waitForTimeout(1500.0)
                     }
 
                     // navigating 중 content() 터질 수 있어 방어
                     val html = try {
-                        pwPage.content()
+                        page.content()
                     } catch (e: Exception) {
-                        pwPage.waitForTimeout(500.0 + Math.random() * 600.0)
-                        pwPage.content()
+                        page.waitForTimeout(500.0 + Math.random() * 600.0)
+                        page.content()
                     }
 
                     if (debug) println("[PW] OK detail url=$curUrl htmlLen=${html.length}")
@@ -187,14 +206,16 @@ class ExtraSnuCrawler(
                 }
 
                 // 3) 그 외 상태: 아직 view.do이거나 중간 이동 중
-                pwPage.waitForTimeout(400.0 + Math.random() * 600.0)
+                page.waitForTimeout(400.0 + Math.random() * 600.0)
             }
 
-            if (debug) println("[PW] FAIL timeout waiting for detail dataSeq=$dataSeq lastUrl=${pwPage.url()}")
+            if (debug) println("[PW] FAIL timeout waiting for detail dataSeq=$dataSeq lastUrl=${page.url()}")
             null
         } catch (e: Exception) {
             if (debug) println("[PW] FAIL dataSeq=$dataSeq : ${e::class.simpleName} ${e.message}")
             null
+        } finally {
+            runCatching { page.close() }
         }
     }
 
