@@ -51,7 +51,7 @@ class EventService(
 
         val interestPriorityByCategoryId = loadInterestMap(userId)
 
-        // 날짜별 버킷: "그 날과 겹치면 포함"
+        // 날짜별 버킷: 이벤트 기간 또는 신청 기간 중 하나라도 그 날과 겹치면 포함
         val buckets = linkedMapOf<LocalDate, MutableList<Event>>().apply {
             var d = from
             while (!d.isAfter(to)) {
@@ -61,20 +61,31 @@ class EventService(
         }
 
         fun effectiveStart(e: Event): LocalDateTime =
-            e.eventStart ?: e.applyStart ?: fromStart
+            listOfNotNull(e.applyStart, e.eventStart).minOrNull() ?: fromStart
 
         fun effectiveEnd(e: Event): LocalDateTime =
-            e.eventEnd ?: e.applyEnd ?: effectiveStart(e)
+            listOfNotNull(e.applyEnd, e.eventEnd).maxOrNull() ?: effectiveStart(e)
 
-        for (e in events) {
-            val s = effectiveStart(e).toLocalDate().coerceAtLeast(from)
-            val ee = effectiveEnd(e).toLocalDate().coerceAtMost(to)
+        fun addRangeToBuckets(event: Event, start: LocalDateTime?, end: LocalDateTime?) {
+            val rangeStart = start ?: return
+            val rangeEnd = end ?: rangeStart
+            val s = rangeStart.toLocalDate().coerceAtLeast(from)
+            val ee = rangeEnd.toLocalDate().coerceAtMost(to)
+            if (s.isAfter(ee)) return
 
             var d = s
             while (!d.isAfter(ee)) {
-                buckets[d]?.add(e)
+                val dayBucket = buckets[d] ?: error("bucket missing for $d")
+                if (dayBucket.none { it.id == event.id }) {
+                    dayBucket.add(event)
+                }
                 d = d.plusDays(1)
             }
+        }
+
+        for (e in events) {
+            addRangeToBuckets(e, e.eventStart, e.eventEnd)
+            addRangeToBuckets(e, e.applyStart, e.applyEnd)
         }
 
         val auth = userId != null

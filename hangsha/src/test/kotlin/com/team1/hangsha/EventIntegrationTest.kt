@@ -198,6 +198,68 @@ class EventIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `이벤트 월 조회는 event 기간과 apply 기간을 모두 기준으로 bucket 에 포함한다`() {
+        val from = LocalDate.now()
+        val to = from.plusDays(4)
+
+        dataGenerator.generateEvent(
+            title = "BOTH RANGE",
+            applyStart = from.atStartOfDay(),
+            applyEnd = from.plusDays(1).atTime(23, 59, 59),
+            eventStart = from.plusDays(3).atTime(9, 0),
+            eventEnd = from.plusDays(4).atTime(18, 0),
+        )
+
+        val res = mockMvc.perform(get(monthUrl(from, to)))
+            .andExpect(status().isOk)
+            .andReturn()
+
+        val byDate = objectMapper.readTree(res.response.contentAsString)["byDate"]
+        val expectedDates = listOf(from, from.plusDays(1), from.plusDays(3), from.plusDays(4)).map(::ymd)
+
+        expectedDates.forEach { day ->
+            val titles = byDate[day]["events"].map { it["title"].asText() }
+            require(titles.count { it == "BOTH RANGE" } == 1) {
+                "expected BOTH RANGE exactly once in $day, but got $titles"
+            }
+        }
+
+        require(byDate[ymd(from.plusDays(2))].isMissingNode) {
+            "expected no bucket on ${ymd(from.plusDays(2))}"
+        }
+    }
+
+    @Test
+    fun `이벤트 일 조회는 event 기간과 apply 기간 중 하나라도 겹치면 포함한다`() {
+        val date = LocalDate.now()
+
+        dataGenerator.generateEvent(
+            title = "APPLY ONLY TODAY",
+            applyStart = date.minusDays(1).atStartOfDay(),
+            applyEnd = date.atTime(23, 59, 59),
+            eventStart = date.plusDays(5).atTime(9, 0),
+            eventEnd = date.plusDays(5).atTime(11, 0),
+        )
+
+        dataGenerator.generateEvent(
+            title = "OTHER",
+            applyStart = date.plusDays(2).atStartOfDay(),
+            applyEnd = date.plusDays(2).atTime(23, 59, 59),
+            eventStart = date.plusDays(3).atTime(9, 0),
+            eventEnd = date.plusDays(3).atTime(11, 0),
+        )
+
+        val res = mockMvc.perform(get("/api/v1/events/day?date=${ymd(date)}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.total").value(1))
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andReturn()
+
+        val titles = objectMapper.readTree(res.response.contentAsString)["items"].map { it["title"].asText() }
+        assertEquals(listOf("APPLY ONLY TODAY"), titles)
+    }
+
+    @Test
     fun `이벤트 일 조회 기본 page size total items 동작하고 정렬 desc 이다`() {
         val date = LocalDate.now()
         val dayStart = date.atStartOfDay()
