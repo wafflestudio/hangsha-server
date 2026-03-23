@@ -29,7 +29,7 @@ class EventQueryRepository(
             WHERE (
               (e.event_start IS NOT NULL AND e.event_start < :toEndExclusive AND COALESCE(e.event_end, e.event_start) >= :fromStart)
               OR
-              (e.event_start IS NULL AND e.apply_start < :toEndExclusive AND COALESCE(e.apply_end, e.apply_start) >= :fromStart)
+              (e.apply_start IS NOT NULL AND e.apply_start < :toEndExclusive AND COALESCE(e.apply_end, e.apply_start) >= :fromStart)
             )
             """.trimIndent()
             )
@@ -71,9 +71,9 @@ class EventQueryRepository(
             SELECT COUNT(*)
             FROM events e
             WHERE (
-              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND e.event_end >= :dayStart)
+              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
               OR
-              (e.event_start IS NULL AND e.apply_start < :dayEnd AND e.apply_end >= :dayStart)
+              (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
             )
             """.trimIndent()
             )
@@ -118,9 +118,9 @@ class EventQueryRepository(
             SELECT e.*
             FROM events e
             WHERE (
-              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND e.event_end >= :dayStart)
+              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
               OR
-              (e.event_start IS NULL AND e.apply_start < :dayEnd AND e.apply_end >= :dayStart)
+              (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
             )
             """.trimIndent()
             )
