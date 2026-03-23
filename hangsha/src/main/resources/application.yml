@@ -89,6 +89,12 @@ upload:
   dir: /data/uploads
   public-base-url: "https://hangsha.site/static"
   max-size-bytes: 10485760
+
+# TODO: 프로퍼티 정상 주입 확인 목적. 배포 완료 시 내리기.
+logging:
+  level:
+    com.team1.hangsha : DEBUG
+
 ---
 # ==========================================
 # local profile setting
