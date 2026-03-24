@@ -6,7 +6,6 @@ spring:
     name: CampusCalendar
   profiles:
     default: local
-
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jackson:
@@ -104,9 +103,9 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: ${LOCAL_DB_URL:jdbc:mysql://localhost:3307/campus_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
-    username: ${LOCAL_DB_USER:user}
-    password: ${LOCAL_DB_PASSWORD:password}
+    url: jdbc:mysql://localhost:3307/campus_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: user
+    password: password
 
 oauth2:
   google: # TODO: 로컬 개발 환경에서 클라이언트 쪽으로의 리다이렉션. 우선 임의로 설정. 확인 필요
@@ -115,7 +114,6 @@ oauth2:
     redirect-uri: "http://localhost:3000/login/callback/naver"
   kakao:
     redirect-uri: "http://localhost:3000/login/callback/kakao"
-
 
 ---
 # ==========================================
@@ -127,17 +125,10 @@ spring:
       on-profile: dev
   datasource:
     # DEV 환경부터는 반드시 환경 변수 주입 강제
-    url: ${DEV_DB_URL}
-    username: ${DEV_DB_USER}
-    password: ${DEV_DB_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
-# TODO : 배포 환경에서 쿠키 설정 확인 필요
-#auth:
-#  refresh-cookie:
-#    secure: true
-#    same-site: None
-
-# 🌟
 oauth2:
   google: # TODO : 추후 확인 필요. 정말로 이 리다이렉트 URI가 맞는가?
     redirect-uri: "https://dev-hangsha.wafflestudio.com/login/callback/google"
@@ -156,17 +147,9 @@ spring:
     activate:
       on-profile: prod
   datasource:
-    url: ${PROD_DB_URL}
-    username: ${PROD_DB_USER}
-    password: ${PROD_DB_PASSWORD}
-
-
-# TODO : 배포 환경에서 쿠키 설정 확인 필요
-#auth:
-#  refresh-cookie:
-
-#    secure: true
-#    same-site: None
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
 oauth2:
   google:
