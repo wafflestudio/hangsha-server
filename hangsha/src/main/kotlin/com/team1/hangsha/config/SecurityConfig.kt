@@ -45,6 +45,7 @@ class SecurityConfig(
                     // public path
                     .requestMatchers(
                         // 문서
+                        "/swagger-ui.html",
                         "/swagger-ui/**",
                         "/v3/api-docs/**",
                         "/api-docs/**",
