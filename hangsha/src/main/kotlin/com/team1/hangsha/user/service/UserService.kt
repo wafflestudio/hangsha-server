@@ -32,6 +32,7 @@ class UserService(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val tokenHasher: TokenHasher,
     private val cookieSupport: AuthCookieSupport,
+    private val userPreferenceService: UserPreferenceService,
     @Value("\${jwt.refresh-expiration-ms}") private val refreshExpirationMs: Long,
 ) {
 
@@ -263,7 +264,9 @@ class UserService(
     fun getMe(userId: Long): UserDto {
         val user = userRepository.findById(userId)
             .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
-        return UserDto(user)
+        val interests = userPreferenceService.listInterestCategory(userId)
+
+        return UserDto(user, interests)
     }
 
     fun updateProfileImageUrl(userId: Long, profileImageUrl: String) {

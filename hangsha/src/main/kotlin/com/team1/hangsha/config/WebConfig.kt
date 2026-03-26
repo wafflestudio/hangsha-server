@@ -19,6 +19,6 @@ class WebConfig(
 
     override fun addResourceHandlers(registry: ResourceHandlerRegistry) {
         registry.addResourceHandler("/static/**")
-            .addResourceLocations("file:$uploadDir/")
+            .addResourceLocations("file:$uploadDir/", "classpath:/static/")
     }
 }
