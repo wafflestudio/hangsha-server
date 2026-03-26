@@ -1,5 +1,6 @@
 package com.team1.hangsha.batch
 
+import com.team1.hangsha.common.CommonMarker
 import com.team1.hangsha.config.DatabaseConfig
 import com.team1.hangsha.config.JacksonConfig
 import com.team1.hangsha.event.service.EventSyncService
@@ -17,6 +18,7 @@ import org.springframework.context.annotation.Import
 class BatchApplication
 
 fun main(args: Array<String>) {
+    println("Common source = ${CommonMarker.SOURCE}")
     SpringApplicationBuilder(BatchApplication::class.java)
         .web(WebApplicationType.NONE)
         .run(*args)
