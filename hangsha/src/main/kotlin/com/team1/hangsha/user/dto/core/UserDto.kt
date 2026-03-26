@@ -9,4 +9,4 @@ data class UserDto(
     val profileImageUrl: String?,
 ) {
     constructor(user: User) : this(user.id!!, user.username, user.email, user.profileImageUrl)
-}   
+}

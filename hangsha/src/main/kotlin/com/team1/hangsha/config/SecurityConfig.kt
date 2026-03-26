@@ -71,12 +71,12 @@ class SecurityConfig(
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
-
+            /*
             .oauth2Login { oauth2 ->
                 oauth2.userInfoEndpoint { it.userService(customOAuth2UserService) } // 유저 정보 처리 로직
                 oauth2.successHandler(oAuth2SuccessHandler)
             }
-
+            */
         return http.build()
     }
 }

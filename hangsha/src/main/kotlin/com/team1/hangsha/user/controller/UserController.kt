@@ -56,7 +56,7 @@ class UserController(
             ### 유효성 규칙
             - username
               - **blank 금지**(trim 후 빈 문자열) → INVALID_REQUEST
-              - **최대 50자** → INVALID_REQUEST
+              - **영어 최대 20자, 한국어 최대 10자** → INVALID_REQUEST
             - profileImageUrl
               - **http / https URL만 허용** → INVALID_REQUEST
               """
