@@ -1,5 +1,12 @@
 plugins {
     kotlin("jvm")
+    id("io.spring.dependency-management") version "1.1.7"
+}
+
+dependencyManagement {
+    imports {
+        mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.9")
+    }
 }
 
 group = "com.team1"
