@@ -16,6 +16,7 @@ import com.team1.hangsha.user.AuthCookieSupport
 import com.team1.hangsha.user.model.RefreshToken
 import com.team1.hangsha.user.TokenHasher
 import com.fasterxml.jackson.databind.JsonNode
+import com.team1.hangsha.common.extentions.getDisplayLength
 import org.mindrot.jbcrypt.BCrypt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -39,6 +40,7 @@ class UserService(
     fun localRegister(
         email: String,
         password: String,
+        username: String? = null
     ): UserDto {
 
         if (userIdentityRepository.existsByProviderAndEmail(AuthProvider.LOCAL, email)) {
@@ -47,10 +49,12 @@ class UserService(
         validatePassword(password)
 
         val encryptedPassword = BCrypt.hashpw(password, BCrypt.gensalt())
+        val finalUsername = username?.takeIf { it.isNotBlank() } ?: email.substringBefore("@")
         val user =
             userRepository.save(
                 User(
                     email = email,
+                    username = finalUsername
                 ),
             )
 
@@ -225,7 +229,7 @@ class UserService(
     }
 
     private fun validateUsernameOrThrow(username: String?) {
-        val s = username?.trim() ?: return  // null = 삭제 → 허용
+        val s = username?.trim() ?: return
 
         if (s.isBlank()) {
             throw DomainException(
@@ -234,7 +238,7 @@ class UserService(
             )
         }
 
-        if (s.length > 50) {
+        if (s.getDisplayLength() > 15) {
             throw DomainException(
                 ErrorCode.INVALID_REQUEST,
                 "username은 50자를 초과할 수 없습니다"

@@ -5,6 +5,7 @@ import com.team1.hangsha.auth.dto.SocialLoginRequest
 import com.team1.hangsha.auth.dto.SocialLoginResult
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
+import com.team1.hangsha.common.extentions.truncateByDisplayLength
 import com.team1.hangsha.user.model.User
 import com.team1.hangsha.user.repository.UserRepository
 import com.team1.hangsha.user.service.UserService
@@ -27,21 +28,18 @@ class AuthService(
     @Value("\${oauth2.google.client-secret}") val googleClientSecret: String,
     @Value("\${oauth2.google.redirect-uri}") val googleRedirectUri: String,
 
-    // [수정됨] 카카오 시크릿 추가
     @Value("\${oauth2.kakao.client-id}") val kakaoClientId: String,
     @Value("\${oauth2.kakao.client-secret}") val kakaoClientSecret: String,
     @Value("\${oauth2.kakao.redirect-uri}") val kakaoRedirectUri: String,
 
     @Value("\${oauth2.naver.client-id}") val naverClientId: String,
     @Value("\${oauth2.naver.client-secret}") val naverClientSecret: String,
-    // 네이버는 state 값이 필수인 경우가 많으나, 단순 토큰 교환 시 임의값 사용 가능
     @Value("\${oauth2.naver.redirect-uri}") val naverRedirectUri: String
 ) {
     private val restTemplate = RestTemplate()
 
     @Transactional
     fun socialLogin(req: SocialLoginRequest): SocialLoginResult {
-        // 1. 소셜 프로필 가져오기
         val socialProfile = when (req.provider.uppercase()) {
             "GOOGLE" -> getGoogleProfile(req.code, req.codeVerifier) // codeVerifier 추가된 버전 유지
             "KAKAO" -> getKakaoProfile(req.code)
@@ -49,25 +47,22 @@ class AuthService(
             else -> throw IllegalArgumentException("지원하지 않는 Provider입니다.")
         }
 
-        // 2. 로그인 또는 회원가입 처리
         var isNewUser = false
 
-        // 먼저 DB에서 찾아봅니다.
         var user = userRepository.findByEmail(socialProfile.email)
-
-        // 없으면 회원가입 진행
         if (user == null) {
+            var finalUsername = socialProfile.nickname?.takeIf { it.isNotBlank() } ?: socialProfile.email.substringBefore("@")
+            finalUsername = finalUsername.truncateByDisplayLength(20)
             user = userRepository.save(
                 User(
                     email = socialProfile.email,
-                    username = socialProfile.nickname,
+                    username = finalUsername,
                     profileImageUrl = socialProfile.profileImage
                 )
             )
-            isNewUser = true // 새로 만들었으니 true로 설정
+            isNewUser = true
         }
 
-        // 3. 우리 서비스 전용 토큰 발급
         val issued = userService.issueAfterSocialLogin(user!!.id!!)
 
         return SocialLoginResult(
@@ -77,7 +72,6 @@ class AuthService(
         )
     }
 
-    // --- Google ---
     private fun getGoogleProfile(code: String, codeVerifier: String?): SocialUserProfile {
         val tokenUrl = "https://oauth2.googleapis.com/token"
 
@@ -95,7 +89,6 @@ class AuthService(
         val tokenResp = restTemplate.postForObject(tokenUrl, params, GoogleTokenResponse::class.java)
             ?: throw DomainException(ErrorCode.INTERNAL_ERROR)
 
-        // ID Token 디코딩 대신 UserInfo API 호출 (간편함)
         val userInfoUrl = "https://www.googleapis.com/oauth2/v3/userinfo"
         val headers = HttpHeaders().apply { setBearerAuth(tokenResp.accessToken) }
         val entity = HttpEntity<Unit>(headers)
@@ -106,7 +99,6 @@ class AuthService(
         return SocialUserProfile(userInfo.email, userInfo.name, userInfo.picture)
     }
 
-    // --- Kakao ---
     private fun getKakaoProfile(code: String): SocialUserProfile {
         println(">>> DEBUG: ID=$kakaoClientId, SECRET=$kakaoClientSecret")
         val tokenUrl = "https://kauth.kakao.com/oauth/token"
@@ -117,7 +109,6 @@ class AuthService(
             add("client_id", kakaoClientId)
             add("redirect_uri", kakaoRedirectUri)
             add("code", code)
-            // [수정됨] 시크릿 키 파라미터 추가 (KOE010 에러 해결)
             add("client_secret", kakaoClientSecret)
         }
 
@@ -142,10 +133,8 @@ class AuthService(
         )
     }
 
-    // --- Naver ---
     private fun getNaverProfile(code: String): SocialUserProfile {
         val tokenUrl = "https://nid.naver.com/oauth2.0/token"
-        // 네이버는 쿼리 파라미터로 전송 추천
         val uri = "$tokenUrl?grant_type=authorization_code&client_id=$naverClientId&client_secret=$naverClientSecret&code=$code&state=9999"
 
         val tokenResp = restTemplate.getForObject(uri, NaverTokenResponse::class.java)
@@ -160,7 +149,7 @@ class AuthService(
 
         return SocialUserProfile(
             email = userInfo.email,
-            nickname = userInfo.name, // 네이버는 'name'이 실명, 'nickname'이 별명
+            nickname = userInfo.name, // 네이버는 name이 실명, nickname이 별명
             profileImage = userInfo.profileImage
         )
     }
