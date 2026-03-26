@@ -1,4 +1,4 @@
-package com.team1.hangsha.config
+package com.team1.hangsha.com.team1.hangsha.config
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
