@@ -25,7 +25,7 @@ class AuthController(
 ) {
     @PostMapping("/register")
     fun localRegister(@RequestBody req: RegisterRequest): ResponseEntity<RegisterResponse> {
-        userService.localRegister(req.email, req.password)
+        userService.localRegister(req.email, req.password, req.username)
         val issued = userService.issueAfterLocalLogin(req.email, req.password)
 
         return ResponseEntity.ok()
