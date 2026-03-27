@@ -24,6 +24,8 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation(kotlin("stdlib"))
 
+    implementation("com.wafflestudio.spring:spring-boot-starter-waffle-oci-vault:2.1.0")
+
 }
 
 kotlin {
