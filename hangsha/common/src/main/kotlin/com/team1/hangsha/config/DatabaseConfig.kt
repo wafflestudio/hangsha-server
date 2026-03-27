@@ -1,5 +1,7 @@
 package com.team1.hangsha.config
 
+import com.team1.hangsha.com.team1.hangsha.config.JsonToStringListConverter
+import com.team1.hangsha.com.team1.hangsha.config.StringListToJsonConverter
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.jdbc.repository.config.EnableJdbcAuditing
 import org.springframework.data.jdbc.repository.config.EnableJdbcRepositories

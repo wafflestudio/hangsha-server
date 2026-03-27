@@ -24,17 +24,20 @@ class AuthService(
     private val userRepository: UserRepository,
     private val userService: UserService,
 
-    @Value("\${oauth2.google.client-id}") val googleClientId: String,
-    @Value("\${oauth2.google.client-secret}") val googleClientSecret: String,
-    @Value("\${oauth2.google.redirect-uri}") val googleRedirectUri: String,
+    @Value("\${spring.security.oauth2.client.registration.google.client-id}") val googleClientId: String,
+    @Value("\${spring.security.oauth2.client.registration.google.client-secret}") val googleClientSecret: String,
+    @Value("\${spring.security.oauth2.client.registration.google.redirect-uri}") val googleRedirectUri: String,
 
-    @Value("\${oauth2.kakao.client-id}") val kakaoClientId: String,
-    @Value("\${oauth2.kakao.client-secret}") val kakaoClientSecret: String,
-    @Value("\${oauth2.kakao.redirect-uri}") val kakaoRedirectUri: String,
+    // [수정됨] 카카오 시크릿 추가
+    @Value("\${spring.security.oauth2.client.registration.kakao.client-id}") val kakaoClientId: String,
+    @Value("\${spring.security.oauth2.client.registration.kakao.client-secret}") val kakaoClientSecret: String,
+    @Value("\${spring.security.oauth2.client.registration.kakao.redirect-uri}") val kakaoRedirectUri: String,
 
-    @Value("\${oauth2.naver.client-id}") val naverClientId: String,
-    @Value("\${oauth2.naver.client-secret}") val naverClientSecret: String,
-    @Value("\${oauth2.naver.redirect-uri}") val naverRedirectUri: String
+    @Value("\${spring.security.oauth2.client.registration.naver.client-id}") val naverClientId: String,
+    @Value("\${spring.security.oauth2.client.registration.naver.client-secret}") val naverClientSecret: String,
+    // 네이버는 state 값이 필수인 경우가 많으나, 단순 토큰 교환 시 임의값 사용 가능
+    @Value("\${spring.security.oauth2.client.registration.naver.redirect-uri}") val naverRedirectUri: String
+
 ) {
     private val restTemplate = RestTemplate()
 

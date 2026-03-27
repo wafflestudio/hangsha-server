@@ -25,6 +25,8 @@ repositories {
 }
 
 dependencies {
+    implementation(project(":common"))
+
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.15")
@@ -46,6 +48,7 @@ dependencies {
     testImplementation("org.testcontainers:mysql")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation(kotlin("stdlib"))
 }
 
 kotlin {
