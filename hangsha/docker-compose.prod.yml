@@ -30,6 +30,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-campus_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-user}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASS:-password}
+      JWT_SECRET: ${JWT_SECRET}
       UPLOAD_DIR: /data/uploads
       UPLOAD_PUBLIC_BASE_URL: ${UPLOAD_PUBLIC_BASE_URL:-https://hangsha.site/static}
     volumes:
