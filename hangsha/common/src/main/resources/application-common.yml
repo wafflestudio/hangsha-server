@@ -7,6 +7,19 @@ spring:
     username: user
     password: password
 
+oci:
+  auth:
+    type: config
+  vault:
+    secret-ids: "ocid1.vaultsecret.oc1.ap-chuncheon-1.amaaaaaat2m5lbqawu5rdzjsnl3zot7ii3svbmup5akjqljppt4d5wwjimgq"
+
+
+logging:  # for local debugging
+  level:
+    org.springframework.boot.context.config: TRACE
+    org.springframework.core.env: DEBUG
+    com.oracle.bmc: DEBUG
+    com.team1.hangsha: DEBUG
 ---
 spring:
   config:
@@ -17,6 +30,10 @@ spring:
     username:
     password:
 
+oci:
+  vault:
+    secret-ids: "ocid1.vaultsecret.oc1.ap-chuncheon-1.amaaaaaat2m5lbqagobbswqnpk5ezitpkdb7kidfrnhuuotu5yudac62bhpa"
+
 ---
 spring:
   config:
@@ -26,3 +43,7 @@ spring:
     url:
     username:
     password:
+
+oci:
+  vault:
+    secret-ids: "ocid1.vaultsecret.oc1.ap-chuncheon-1.amaaaaaat2m5lbqaf77fsikezk5n2xakqhaokn33iedgj7wv6pxqa4q23aea"

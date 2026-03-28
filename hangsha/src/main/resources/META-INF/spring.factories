@@ -1,0 +1,3 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.wafflestudio.spring.ocivault.config.OciVaultEnvironmentPostProcessor,\
+com.team1.hangsha.config.VaultDebugEnvironmentPostProcessor

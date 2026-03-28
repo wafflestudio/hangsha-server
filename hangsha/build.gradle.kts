@@ -22,10 +22,27 @@ configurations {
 
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/wafflestudio/spring-waffle")
+        credentials {
+            username = "wafflestudio"
+            password = findProperty("gpr.key") as String?
+                ?: System.getenv("GITHUB_TOKEN")
+                ?: runCatching {
+                    ProcessBuilder("gh", "auth", "token")
+                        .start()
+                        .inputStream
+                        .bufferedReader()
+                        .readText()
+                        .trim()
+                }.getOrDefault("")
+        }
+    }
 }
 
 dependencies {
     implementation(project(":common"))
+    implementation("com.wafflestudio.spring:spring-boot-starter-waffle-oci-vault:1.1.0")
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
