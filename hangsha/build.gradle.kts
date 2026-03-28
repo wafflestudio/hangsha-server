@@ -43,6 +43,8 @@ repositories {
 dependencies {
     implementation(project(":common"))
     implementation("com.wafflestudio.spring:spring-boot-starter-waffle-oci-vault:1.1.0")
+    implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.80.1")
+    // TODO: common의 dependency를 root api, batch에 공유하는 과정에서 문제 -> 나중에 해결하기.
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
