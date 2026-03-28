@@ -1,0 +1,17 @@
+name: Deploy-batch-dev
+
+on:
+  push:
+    branches: [ develop ]
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      ocir_repository: hangsha-dev/hangsha-batch
+      dockerfile: batch/Dockerfile
+      gradle_task: :batch:bootJar
+    secrets:
+      OCI_AUTH_TOKEN: ${{ secrets.OCI_AUTH_TOKEN }}
+      DEPLOYER_APP_ID: ${{ secrets.DEPLOYER_APP_ID }}
+      DEPLOYER_APP_PRIVATE_KEY: ${{ secrets.DEPLOYER_APP_PRIVATE_KEY }}
