@@ -17,12 +17,18 @@ repositories {
     mavenCentral()
 }
 
+
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework:spring-web")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation(kotlin("stdlib"))
+
+    // oci sdk for storage service
+    implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.80.1")
+    implementation("com.oracle.oci.sdk:oci-java-sdk-common-httpclient-jersey3:3.80.1")
 
 }
 

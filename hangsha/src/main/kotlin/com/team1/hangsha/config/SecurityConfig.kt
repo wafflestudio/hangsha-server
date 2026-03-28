@@ -68,6 +68,7 @@ class SecurityConfig(
                         "/admin/events/delete",
                         // 파일 업로드
                         "/static/**",
+                        "/api/v1/uploads/oci/**",
                     ).permitAll()
                     .anyRequest().authenticated()
             }

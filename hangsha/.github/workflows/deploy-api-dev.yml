@@ -1,0 +1,17 @@
+name: Deploy-api-dev
+
+on:
+  push:
+    branches: [ develop ]
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      ocir_repository: hangsha-dev/hangsha-server
+      dockerfile: Dockerfile
+      gradle_task: :bootJar
+    secrets:
+      OCI_AUTH_TOKEN: ${{ secrets.OCI_AUTH_TOKEN }}
+      DEPLOYER_APP_ID: ${{ secrets.DEPLOYER_APP_ID }}
+      DEPLOYER_APP_PRIVATE_KEY: ${{ secrets.DEPLOYER_APP_PRIVATE_KEY }}
