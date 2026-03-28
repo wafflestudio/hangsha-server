@@ -1,7 +1,10 @@
 oci:
+  auth:
+    verify: true # get namespace when booting
   storage:
     namespace: ax1dvc8vmenm
     region: ap-chuncheon-1
+
 ---
 spring:
   config:
