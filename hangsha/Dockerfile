@@ -1,11 +1,13 @@
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:17-jdk
 
 WORKDIR /app
 
 # 컨테이너 기본 타임존을 KST로 맞추기
-RUN apk add --no-cache tzdata \
-    && cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
-    && echo "Asia/Seoul" > /etc/timezone
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
+    && echo "Asia/Seoul" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Seoul
 

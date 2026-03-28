@@ -1,0 +1,71 @@
+name: deploy-template
+
+on:
+  workflow_call:
+    inputs:
+      ocir_repository:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+        description: "Dockerfile path (e.g., Dockerfile, batch/Dockerfile)"
+      gradle_task:
+        required: true
+        type: string
+        description: "Gradle task to build the jar (e.g., :bootJar, :batch:bootJar)"
+      platform:
+        required: false
+        type: string
+        default: "linux/arm64"
+    secrets:
+      OCI_AUTH_TOKEN:
+        required: true
+      DEPLOYER_APP_ID:
+        required: true
+      DEPLOYER_APP_PRIVATE_KEY:
+        required: true
+
+jobs:
+  deploy:
+    name: Build and Push
+    runs-on: ubuntu-24.04-arm
+
+    env:
+      IMAGE_TAG: ${{ github.run_number }}
+      BUILD_NUMBER: ${{ github.run_number }}
+      OCIR_REGISTRY: yny.ocir.io
+      OCIR_NAMESPACE: ax1dvc8vmenm
+      OCIR_USERNAME: ax1dvc8vmenm/members/waffle-deployer
+      OCIR_REPOSITORY: ${{ inputs.ocir_repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Build Jar
+        working-directory: hangsha
+        run: ./gradlew ${{ inputs.gradle_task }}
+
+      - name: Login to OCIR
+        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login $OCIR_REGISTRY -u $OCIR_USERNAME --password-stdin
+
+      - name: Docker build, tag, and push image to OCIR
+        id: build-push-image
+        working-directory: hangsha
+        run: |
+          docker build \
+            -f ${{ inputs.dockerfile }} \
+            -t $OCIR_REGISTRY/$OCIR_NAMESPACE/$OCIR_REPOSITORY:$IMAGE_TAG \
+            . \
+            --platform ${{ inputs.platform }}
+          docker push $OCIR_REGISTRY/$OCIR_NAMESPACE/$OCIR_REPOSITORY:$IMAGE_TAG
+          echo "image=$OCIR_REGISTRY/$OCIR_NAMESPACE/$OCIR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
