@@ -52,6 +52,7 @@ jobs:
           cache: gradle
 
       - name: Build Jar
+        working-directory: hangsha
         run: ./gradlew ${{ inputs.gradle_task }}
 
       - name: Login to OCIR
@@ -59,6 +60,7 @@ jobs:
 
       - name: Docker build, tag, and push image to OCIR
         id: build-push-image
+        working-directory: hangsha
         run: |
           docker build \
             -f ${{ inputs.dockerfile }} \
