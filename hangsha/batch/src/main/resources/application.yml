@@ -12,3 +12,5 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jackson:
     time-zone: Asia/Seoul
+
+test:

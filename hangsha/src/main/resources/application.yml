@@ -96,6 +96,7 @@ logging:
   level:
     com.team1.hangsha : DEBUG
 
+test:
 ---
 # ==========================================
 # local profile setting
