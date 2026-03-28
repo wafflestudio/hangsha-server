@@ -26,6 +26,10 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation(kotlin("stdlib"))
 
+    // oci sdk for storage service
+    implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.80.1")
+    implementation("com.oracle.oci.sdk:oci-java-sdk-common-httpclient-jersey3:3.80.1")
+
 }
 
 kotlin {
