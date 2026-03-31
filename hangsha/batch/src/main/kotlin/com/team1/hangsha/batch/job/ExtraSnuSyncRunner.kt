@@ -63,7 +63,7 @@ class ExtraSnuSyncRunner(
 
 private data class BatchArgs(
     val startPage: Int = 1,
-    val maxPages: Int = 3,
+    val maxPages: Int = 4,
     val delayMs: Long = 200,
     val withDetails: Boolean = true,
     val detailDelayMs: Long = 100,
@@ -80,7 +80,7 @@ private data class BatchArgs(
 
             return BatchArgs(
                 startPage = single("startPage")?.toInt() ?: 1,
-                maxPages = single("maxPages")?.toInt() ?: 500,
+                maxPages = single("maxPages")?.toInt() ?: 4,
                 delayMs = single("delayMs")?.toLong() ?: 200L,
                 withDetails = withDetails,
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,

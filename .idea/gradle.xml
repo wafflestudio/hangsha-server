@@ -9,6 +9,7 @@
           <set>
             <option value="$PROJECT_DIR$/hangsha" />
             <option value="$PROJECT_DIR$/hangsha/batch" />
+            <option value="$PROJECT_DIR$/hangsha/common" />
           </set>
         </option>
       </GradleProjectSettings>
