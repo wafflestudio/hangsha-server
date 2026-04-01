@@ -43,9 +43,10 @@ class EventSyncService(
 
             val orgName = e.majorTypes.getOrNull(0)?.trim()?.takeIf { it.isNotBlank() }
             val orgId = orgName?.let { getOrCreateCategoryId(orgGroupId, it) }
-            val typeName = normalizeProgramType(e.majorTypes.getOrNull(1))
+            val typeName = normalizeProgramType(e)
 
-            val statusId = e.status?.let { findCategoryId(statusGroupId, it) }
+            val statusName = normalizeStatus(e.status)
+            val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
             val eventTypeId = typeName?.let { findCategoryId(typeGroupId, it) }
 
             val applyStart = e.applyStart?.let { dateStart(it) }
@@ -207,9 +208,29 @@ class EventSyncService(
         }
     }
 
-    private fun normalizeProgramType(raw: String?): String? {
+    private fun normalizeStatus(raw: String?): String? {
         val s = raw?.trim()
         if (s.isNullOrBlank()) return null
+        return when (s) {
+            "모집임박" -> "모집중"
+            else -> s
+        }
+    }
+
+    private fun normalizeProgramType(e: CrawledProgramEvent): String? {
+        val candidates = buildList {
+            addAll(e.majorTypes)
+            e.title?.let { add(it) }
+            addAll(e.tags)
+        }
+
+        if (candidates.any { it.contains("openlnl", ignoreCase = true) }) {
+            return "OpenLnL"
+        }
+
+        val s = e.majorTypes.getOrNull(1)?.trim()
+        if (s.isNullOrBlank()) return null
+
         return when (s) {
             "레크리에이션" -> "기타"
             else -> s
