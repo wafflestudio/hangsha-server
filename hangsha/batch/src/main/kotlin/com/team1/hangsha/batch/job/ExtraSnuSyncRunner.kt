@@ -3,6 +3,7 @@ package com.team1.hangsha.batch.job
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
+import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.service.EventSyncService
@@ -14,6 +15,7 @@ import kotlin.system.exitProcess
 @Component
 class ExtraSnuSyncRunner(
     private val eventSyncService: EventSyncService,
+    private val ociUploadService: OciUploadService,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
@@ -46,7 +48,13 @@ class ExtraSnuSyncRunner(
                     crawler.enrichDetails(baseEvents) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
                 }
 
-                val result = eventSyncService.sync(events.map { it.toCrawledProgramEvent() })
+                val eventsWithUploadedImages = if (!opt.withDetails) {
+                    events
+                } else {
+                    crawler.uploadEventImages(events, ociUploadService)
+                }
+
+                val result = eventSyncService.sync(eventsWithUploadedImages.map { it.toCrawledProgramEvent() })
 
                 totalUpserted += result.upserted
                 totalCrawled += result.total

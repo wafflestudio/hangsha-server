@@ -12,6 +12,7 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.util.concurrent.TimeUnit
+import com.team1.hangsha.common.upload.OciUploadService
 
 class ExtraSnuCrawler(
     private val baseUrl: String = "https://extra.snu.ac.kr",
@@ -483,4 +484,106 @@ class ExtraSnuCrawler(
         val html = fetchListPage(pageNo) ?: return emptyList()
         return parseListHtml(html)
     }
+
+    fun uploadEventImages(
+        events: List<ProgramEvent>,
+        ociUploadService: OciUploadService,
+    ): List<ProgramEvent> {
+        val cookieHeader = buildCookieHeader()
+
+        if (cookieHeader.isBlank()) {
+            if (debug) println("[IMG] no playwright cookies; skip image upload")
+            return events
+        }
+
+        return events.map { event ->
+            val rawUrl = event.imageUrl?.trim()
+            if (rawUrl.isNullOrBlank()) return@map event
+
+            val downloaded = runCatching {
+                downloadImage(rawUrl, cookieHeader)
+            }.onFailure {
+                if (debug) println("[IMG] download fail dataSeq=${event.dataSeq} msg=${it.message}")
+            }.getOrNull()
+
+            if (downloaded == null) {
+                return@map event.copy(imageUrl = null)
+            }
+
+            val uploadedUrl = runCatching {
+                ociUploadService.uploadBytesIfAbsent(
+                    prefix = "events",
+                    originalFilename = "event-${event.dataSeq ?: "unknown"}",
+                    bytes = downloaded.bytes,
+                    contentType = downloaded.contentType,
+                )
+            }.onFailure {
+                if (debug) println("[IMG] upload fail dataSeq=${event.dataSeq} msg=${it.message}")
+            }.getOrNull()
+
+            if (uploadedUrl == null) {
+                event.copy(imageUrl = null)
+            } else {
+                if (debug) println("[IMG] uploaded dataSeq=${event.dataSeq} -> $uploadedUrl")
+                event.copy(imageUrl = uploadedUrl)
+            }
+        }
+    }
+
+    private fun buildCookieHeader(): String {
+        return pwContext.cookies()
+            .joinToString("; ") { "${it.name}=${it.value}" }
+    }
+
+    private fun downloadImage(rawUrl: String, cookieHeader: String): DownloadedImage? {
+        val absoluteUrl = when {
+            rawUrl.startsWith("http://") || rawUrl.startsWith("https://") -> rawUrl
+            rawUrl.startsWith("/") -> "$baseUrl$rawUrl"
+            else -> "$baseUrl/$rawUrl"
+        }
+
+        val req = Request.Builder()
+            .url(absoluteUrl)
+            .get()
+            .header("Referer", "$baseUrl$listPath")
+            .header("User-Agent", userAgent)
+            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+            .header("Cookie", cookieHeader)
+            .build()
+
+        if (debug) println("[IMG] GET $absoluteUrl")
+
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                if (debug) println("[IMG] FAIL code=${resp.code} url=$absoluteUrl")
+                return null
+            }
+
+            val body = resp.body ?: return null
+            val bytes = body.bytes()
+            if (bytes.isEmpty()) return null
+
+            val contentType = body.contentType()?.toString() ?: "application/octet-stream"
+            val extension = when (contentType.lowercase()) {
+                "image/jpeg", "image/jpg" -> "jpg"
+                "image/png" -> "png"
+                "image/gif" -> "gif"
+                "image/webp" -> "webp"
+                "image/bmp" -> "bmp"
+                else -> "bin"
+            }
+
+            return DownloadedImage(
+                bytes = bytes,
+                contentType = contentType,
+                extension = extension,
+            )
+        }
+    }
+
+    private data class DownloadedImage(
+        val bytes: ByteArray,
+        val contentType: String,
+        val extension: String,
+    )
 }
