@@ -13,6 +13,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.util.concurrent.TimeUnit
 import com.team1.hangsha.common.upload.OciUploadService
+import org.jsoup.parser.Parser
 
 class ExtraSnuCrawler(
     private val baseUrl: String = "https://extra.snu.ac.kr",
@@ -71,6 +72,7 @@ class ExtraSnuCrawler(
      */
     fun enrichDetails(
         events: List<ProgramEvent>,
+        ociUploadService: OciUploadService,
         shouldFetch: (ProgramEvent) -> Boolean = { true }
     ): List<ProgramEvent> {
         return events.map { e ->
@@ -80,13 +82,13 @@ class ExtraSnuCrawler(
 
             val html1 = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
             var sessions = parseDetailSessions(html1)
-            var mainHtml = parseMainContentHtml(html1)
+            var mainHtml = parseMainContentHtml(html1, ociUploadService)
 
             if (sessions.isEmpty()) {
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
                     sessions = parseDetailSessions(html2)
-                    mainHtml = parseMainContentHtml(html2)
+                    mainHtml = parseMainContentHtml(html2, ociUploadService)
                 }
             }
 
@@ -337,15 +339,13 @@ class ExtraSnuCrawler(
 
     /**
      * ✅ "프로그램 주요내용" 섹션의 td_box HTML을 "그대로" 저장하되,
-     * - img, a 태그는 제거
      *
      * 반환값은 td_box의 innerHTML.
      * 없으면 null.
      */
-    private fun parseMainContentHtml(html: String): String? {
+    private fun parseMainContentHtml(html: String, ociUploadService: OciUploadService): String? {
         val doc = Jsoup.parse(html, baseUrl)
 
-        // cont_box 중에서 cont_tit == "프로그램 주요내용" 인 박스 찾기
         val box = doc.select("div.cont_box")
             .firstOrNull {
                 it.selectFirst("p.cont_tit")?.text()?.normalize() == "프로그램 주요내용"
@@ -353,14 +353,54 @@ class ExtraSnuCrawler(
 
         val tdBox = box.selectFirst("div.td_box") ?: return null
 
-        // img, a 제거
-        tdBox.select("img").remove()
-        tdBox.select("a").remove()
+        val cookieHeader = buildCookieHeader()
 
-        // 혹시 script/style 섞이면 제거 (안전)
+        tdBox.select("img").forEach { img ->
+            val rawSrc = img.absUrl("src").ifBlank {
+                val decoded = Parser.unescapeEntities(img.attr("src"), false)
+                when {
+                    decoded.startsWith("http://") || decoded.startsWith("https://") -> decoded
+                    decoded.startsWith("/") -> "$baseUrl$decoded"
+                    else -> "$baseUrl/$decoded"
+                }
+            }
+
+            if (rawSrc.isBlank()) {
+                img.remove()
+                return@forEach
+            }
+
+            val downloaded = runCatching {
+                downloadImage(rawSrc, cookieHeader)
+            }.getOrNull()
+
+            if (downloaded == null) {
+                img.remove()
+                return@forEach
+            }
+
+            val uploadedUrl = runCatching {
+                ociUploadService.uploadBytesIfAbsent(
+                    prefix = "events/detail",
+                    originalFilename = null,
+                    bytes = downloaded.bytes,
+                    contentType = downloaded.contentType,
+                )
+            }.getOrNull()
+
+            if (uploadedUrl == null) {
+                img.remove()
+                return@forEach
+            }
+
+            img.attr("src", uploadedUrl)
+            img.removeAttr("onclick")
+            img.removeAttr("usemap")
+        }
+
+        tdBox.select("a").forEach { it.unwrap() }
         tdBox.select("script, style").remove()
 
-        // 빈 p 같은 거 정리(선택)
         tdBox.select("p").forEach { p ->
             if (p.text().normalize().isBlank() && p.select("br").isEmpty() && p.childrenSize() == 0) {
                 p.remove()
@@ -371,6 +411,10 @@ class ExtraSnuCrawler(
         return out.ifBlank { null }
     }
 
+    // ---------------------------
+    // helpers
+    // ---------------------------
+
     private fun tdAfterThContains(tr: Element, label: String): String? {
         val th = tr.select("th")
             .firstOrNull { it.text().normalize().contains(label) }
@@ -379,15 +423,6 @@ class ExtraSnuCrawler(
         val td = th.nextElementSibling() ?: return null
         return td.text().normalize().takeIf { it.isNotBlank() }
     }
-
-    // ---------------------------
-    // helpers
-    // ---------------------------
-
-    private fun signatureOf(events: List<ProgramEvent>): String =
-        events.take(5).joinToString("|") { e ->
-            "${e.dataSeq}:${e.title}:${e.status}:${e.applyStart}:${e.applyEnd}"
-        }
 
     private fun String.toIntOrNullSafe(): Int? {
         val cleaned = this.replace(",", "").trim()

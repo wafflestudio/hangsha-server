@@ -45,7 +45,7 @@ class ExtraSnuSyncRunner(
                 val events = if (!opt.withDetails) {
                     baseEvents
                 } else {
-                    crawler.enrichDetails(baseEvents) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
+                    crawler.enrichDetails(baseEvents, ociUploadService) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
                 }
 
                 val eventsWithUploadedImages = if (!opt.withDetails) {
