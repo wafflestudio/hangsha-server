@@ -3,6 +3,8 @@ package com.team1.hangsha.batch
 import com.team1.hangsha.config.DatabaseConfig
 import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.com.team1.hangsha.config.JacksonConfig
+import com.team1.hangsha.common.upload.OciUploadService
+import com.team1.hangsha.config.OciConfig
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -15,6 +17,8 @@ import org.springframework.context.annotation.Import
     JacksonConfig::class,
     EventSyncService::class,
     TestValueLogger::class,
+    OciConfig::class,
+    OciUploadService::class,
 ) // for explicit bean import
 class BatchApplication
 
