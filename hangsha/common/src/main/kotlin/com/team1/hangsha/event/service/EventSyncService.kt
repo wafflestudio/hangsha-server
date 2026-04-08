@@ -53,7 +53,7 @@ class EventSyncService(
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
 
             val sessions = patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
-            val hasExistingForApplyLink = eventRepository.findByApplyLink(applyLink) != null
+            val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
                 val eventStart: LocalDateTime?,
