@@ -85,10 +85,7 @@ springdoc:
     path: /api-docs
 
 
-# TODO : 삭제 예정. 이미지 업로드는 외부 스토리지로 모두 마이그레이션 할 것.
 upload:
-  dir: /data/uploads
-  public-base-url: "https://hangsha.site/static"
   max-size-bytes: 10485760
 
 # TODO: 프로퍼티 정상 주입 확인 목적. 배포 완료 시 내리기.
