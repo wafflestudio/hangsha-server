@@ -1,7 +1,6 @@
 package com.team1.hangsha.user.controller
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.team1.hangsha.common.upload.LocalUploadService
 import com.team1.hangsha.common.upload.dto.UploadResponse
 import com.team1.hangsha.user.LoggedInUser
 import com.team1.hangsha.user.model.User
@@ -21,7 +20,6 @@ import io.swagger.v3.oas.annotations.media.Schema
 @RequestMapping("/api/v1/users/me")
 class UserController(
     private val userService: UserService,
-    private val localUploadService: LocalUploadService,
 ) {
     @GetMapping
     fun getMe(
@@ -115,7 +113,7 @@ class UserController(
         @Parameter(hidden = true) @LoggedInUser user: User,
         @RequestPart("file") file: MultipartFile,
     ): ResponseEntity<UploadResponse> {
-        val url = localUploadService.uploadProfileImage(user.id!!, file)
+        val url = userService.uploadProfile(user.id!!, file)
         userService.updateProfileImageUrl(user.id!!, url)
         return ResponseEntity.ok(UploadResponse(url = url))
     }
