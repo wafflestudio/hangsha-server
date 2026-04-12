@@ -17,7 +17,9 @@ data class UserDto(
         id = user.id!!,
         username = user.username,
         email = user.email,
-        profileImageUrl = user.profileImageUrl ?: "https://hangsha.site/static/default-profile.png",
+        profileImageUrl = user.profileImageUrl ?: "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax1dvc8vmenm/b/hangsha-asset/o/default/43513b43-2f84-4f0f-8de8-7d61120fe3aa.png",
+        // default-profile.png는 oci에 업로드 해 두었음.
+
         interestCategories = interestCategories
     )
 }
