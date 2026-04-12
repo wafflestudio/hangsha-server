@@ -11,6 +11,7 @@ import com.team1.hangsha.user.repository.UserIdentityRepository
 import com.team1.hangsha.user.model.AuthProvider
 import com.team1.hangsha.user.dto.IssuedTokens
 import com.team1.hangsha.user.repository.RefreshTokenRepository
+import com.team1.hangsha.common.upload.OciUploadService
 import org.springframework.beans.factory.annotation.Value
 import com.team1.hangsha.user.AuthCookieSupport
 import com.team1.hangsha.user.model.RefreshToken
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.time.Instant
+import org.springframework.web.multipart.MultipartFile
 
 @Service
 class UserService(
@@ -33,6 +35,7 @@ class UserService(
     private val tokenHasher: TokenHasher,
     private val cookieSupport: AuthCookieSupport,
     private val userPreferenceService: UserPreferenceService,
+    private val ociUploadService: OciUploadService,
     @Value("\${jwt.refresh-expiration-ms}") private val refreshExpirationMs: Long,
 ) {
 
@@ -275,5 +278,17 @@ class UserService(
 
         user.profileImageUrl = profileImageUrl
         userRepository.save(user)
+    }
+
+    fun uploadProfile(userId: Long, file: MultipartFile): String {
+        val contentType = file.contentType ?: ""
+        if (!contentType.startsWith("image/")) {
+            throw DomainException(ErrorCode.UPLOAD_UNSUPPORTED_MEDIA_TYPE, "이미지 파일만 업로드할 수 있습니다")
+        }
+
+        return ociUploadService.uploadFile(
+            prefix = "uploads/users/$userId",
+            file = file,
+        )
     }
 }
