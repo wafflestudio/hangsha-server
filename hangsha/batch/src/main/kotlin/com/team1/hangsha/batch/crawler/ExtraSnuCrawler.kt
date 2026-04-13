@@ -84,7 +84,7 @@ class ExtraSnuCrawler(
             var sessions = parseDetailSessions(html1)
             var mainHtml = parseMainContentHtml(html1, ociUploadService)
 
-            if (sessions.isEmpty()) {
+            if (sessions.isEmpty()) { // fallback once
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
                     sessions = parseDetailSessions(html2)
@@ -140,12 +140,13 @@ class ExtraSnuCrawler(
         if (debug) println("\n[PW] goto(view) => $viewUrl")
 
         fun isWait(u: String) = u.contains("/wait.jsp")
-        fun isDetail(u: String) = u.contains("/ptfol/imng/icmpNsbjtPgm/findIcmpNsbjtPgmInfo.do")
+        fun isDetail(u: String) =
+            u.contains("/ptfol/imng/icmpNsbjtPgm/findIcmpNsbjtPgmInfo.do") ||
+            u.contains("/ptfol/cous/staGrp/rcri/view.do")
 
         val page = pwContext.newPage()
 
         return try {
-            // ✅ domcontentloaded 기다리지 말고 'commit'까지만 (응답만 받으면 됨)
             page.navigate(
                 viewUrl,
                 Page.NavigateOptions()
@@ -153,7 +154,7 @@ class ExtraSnuCrawler(
                     .setTimeout(20_000.0)
             )
 
-            val hardDeadlineMs = System.currentTimeMillis() + 120_000L // 총 2분까지 기다림
+            val hardDeadlineMs = System.currentTimeMillis() + 120_000L
             var lastUrl = page.url()
 
             while (System.currentTimeMillis() < hardDeadlineMs) {
@@ -165,50 +166,87 @@ class ExtraSnuCrawler(
                     return null
                 }
 
-                // 1) wait.jsp면: 서버가 대기열 처리 중. 재navigate 하지 말고 잠깐 기다림.
                 if (isWait(curUrl)) {
                     if (debug) println("[PW] wait.jsp... (sleep)")
-                    page.waitForTimeout(800.0 + Math.random() * 1200.0) // 0.8~2.0s
+                    page.waitForTimeout(800.0 + Math.random() * 1200.0)
                     continue
                 }
 
-                // 2) 최종 상세(findIcmp...)로 왔으면: 실제 기간 값이 들어올 때까지 기다렸다가 content
                 if (isDetail(curUrl)) {
-                    runCatching {
-                        page.waitForFunction(
-                            """
-                        () => {
-                          const ths = Array.from(document.querySelectorAll("th"));
-                          const th = ths.find(x => (x.textContent || "").includes("교육(활동)기간"));
-                          if (!th) return false;
-                          const td = th.nextElementSibling;
-                          if (!td) return false;
-                          const txt = (td.textContent || "").replace(/\s+/g, " ").trim();
-                          return /\d{4}\.\d{2}\.\d{2}\./.test(txt) && /\d{2}:\d{2}/.test(txt);
+                    val detailDeadlineMs = System.currentTimeMillis() + 10_000L
+
+                    while (System.currentTimeMillis() < detailDeadlineMs) {
+                        val titles = runCatching {
+                            @Suppress("UNCHECKED_CAST")
+                            page.evalOnSelectorAll(
+                                "div.cont_box p.cont_tit",
+                                "els => els.map(el => (el.textContent || '').replace(/\\s+/g, ' ').trim())"
+                            ) as List<String>
+                        }.getOrDefault(emptyList())
+
+                        if (debug) println("[PW] titles=$titles")
+
+                        // 아직 본문 골격이 안 뜬 상태
+                        if (titles.isEmpty()) {
+                            page.waitForTimeout(500.0)
+                            continue
                         }
-                        """.trimIndent(),
-                            Page.WaitForFunctionOptions().setTimeout(10_000.0)
-                        )
-                    }.onFailure {
-                        runCatching {
-                            page.waitForLoadState(LoadState.NETWORKIDLE)
+
+                        // 강좌 정보 자체가 없는 페이지면 더 기다리지 말고 그냥 반환
+                        if (!titles.contains("강좌 정보")) {
+                            val html = try {
+                                page.content()
+                            } catch (e: Exception) {
+                                page.waitForTimeout(500.0)
+                                page.content()
+                            }
+                            if (debug) println("[PW] OK detail(no lecture info) url=$curUrl htmlLen=${html.length}")
+                            return html
                         }
-                        page.waitForTimeout(1500.0)
+
+                        // 강좌 정보가 있으면 교육(활동)기간 값이 실제로 채워질 때까지 조금 더 기다림
+                        val hasPeriod = runCatching {
+                            page.evaluate(
+                                """
+                            () => {
+                              const ths = Array.from(document.querySelectorAll("th"));
+                              const th = ths.find(x => (x.textContent || "").includes("교육(활동)기간"));
+                              if (!th) return false;
+                              const td = th.nextElementSibling;
+                              if (!td) return false;
+                              const txt = (td.textContent || "").replace(/\s+/g, " ").trim();
+                              return /\d{4}\.\d{2}\.\d{2}\./.test(txt) && /\d{2}:\d{2}/.test(txt);
+                            }
+                            """.trimIndent()
+                            ) as Boolean
+                        }.getOrDefault(false)
+
+                        if (hasPeriod) {
+                            val html = try {
+                                page.content()
+                            } catch (e: Exception) {
+                                page.waitForTimeout(500.0 + Math.random() * 600.0)
+                                page.content()
+                            }
+                            if (debug) println("[PW] OK detail(with lecture info) url=$curUrl htmlLen=${html.length}")
+                            return html
+                        }
+
+                        page.waitForTimeout(500.0)
                     }
 
-                    // navigating 중 content() 터질 수 있어 방어
+                    // detail 페이지까지는 왔는데 10초 동안 period가 안 떴음
+                    // 그래도 HTML은 넘기고, 실제 판정은 Kotlin parse 쪽에서 처리
                     val html = try {
                         page.content()
                     } catch (e: Exception) {
-                        page.waitForTimeout(500.0 + Math.random() * 600.0)
+                        page.waitForTimeout(500.0)
                         page.content()
                     }
-
-                    if (debug) println("[PW] OK detail url=$curUrl htmlLen=${html.length}")
+                    if (debug) println("[PW] OK detail(timeout fallback) url=$curUrl htmlLen=${html.length}")
                     return html
                 }
 
-                // 3) 그 외 상태: 아직 view.do이거나 중간 이동 중
                 page.waitForTimeout(400.0 + Math.random() * 600.0)
             }
 
@@ -258,8 +296,8 @@ class ExtraSnuCrawler(
                 label to value
             }.orEmpty()
 
-        val applyCount = counts["신청"]?.toIntOrNullSafe()
-        val capacity = counts["정원"]?.toIntOrNullSafe()
+        val applyCount = counts["신청"]?.toIntOrNullSafe() ?: 0
+        val capacity = counts["정원"]?.toIntOrNullSafe() ?: 0
 
         val imageUrl = card.selectFirst(".img_wrap img")
             ?.absUrl("src")

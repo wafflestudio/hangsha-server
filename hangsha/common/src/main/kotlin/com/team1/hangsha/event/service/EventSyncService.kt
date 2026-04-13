@@ -53,6 +53,7 @@ class EventSyncService(
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
 
             val sessions = patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
+            val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
                 val eventStart: LocalDateTime?,
@@ -92,6 +93,12 @@ class EventSyncService(
                     } else {
                         null
                     }
+
+                val isAllDayFallbackPeriod = sessions.isEmpty()
+                if (existing == null && hasExistingForApplyLink && isAllDayFallbackPeriod) {
+                    skipped++
+                    continue
+                }
 
                 val cleanedTags = e.tags
                     .asSequence()

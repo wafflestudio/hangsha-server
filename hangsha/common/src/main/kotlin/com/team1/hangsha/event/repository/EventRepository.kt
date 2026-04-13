@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
 
 interface EventRepository : CrudRepository<Event, Long> {
-    fun findByApplyLink(applyLink: String): Event?
+    fun existsByApplyLink(applyLink: String): Boolean
 
     @Query(
         """
