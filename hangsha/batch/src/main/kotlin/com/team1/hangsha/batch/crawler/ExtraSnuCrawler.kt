@@ -76,20 +76,26 @@ class ExtraSnuCrawler(
         ociUploadService: OciUploadService,
         shouldFetch: (ProgramEvent) -> Boolean = { true }
     ): List<ProgramEvent> {
-        val cookieHeader = buildCookieHeader()
-
         return events.map { e ->
             val dataSeq = e.dataSeq
             if (dataSeq.isNullOrBlank()) return@map e
             if (!shouldFetch(e)) return@map e
 
             val html1 = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
-            var parsed = parseDetailData(html1, ociUploadService, cookieHeader)
+            var parsed = parseDetailData(
+                html = html1,
+                ociUploadService = ociUploadService,
+                cookieHeader = buildCookieHeader()
+            )
 
             if (parsed.sessions.isEmpty()) { // fallback once
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
-                    parsed = parseDetailData(html2, ociUploadService, cookieHeader)
+                    parsed = parseDetailData(
+                        html = html2,
+                        ociUploadService = ociUploadService,
+                        cookieHeader = buildCookieHeader()
+                    )
                 }
             }
 
