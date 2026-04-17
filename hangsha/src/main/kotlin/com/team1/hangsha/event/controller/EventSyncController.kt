@@ -1,9 +1,11 @@
 package com.team1.hangsha.event.controller
 
+import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
@@ -16,6 +18,19 @@ class EventSyncController(
     private val eventSyncService: EventSyncService,
     private val eventRepository: EventRepository,
 ) {
+    @PostMapping("/sync")
+    fun sync(
+        @RequestBody events: List<CrawledProgramEvent>,
+    ): Map<String, Any> {
+        val result = eventSyncService.sync(events)
+        return mapOf(
+            "ok" to true,
+            "total" to result.total,
+            "upserted" to result.upserted,
+            "skipped" to result.skipped,
+        )
+    }
+
     @DeleteMapping("/delete")
     fun deleteAll(): Map<String, Any> {
         val deleted = eventRepository.deleteAllEventsRaw()
