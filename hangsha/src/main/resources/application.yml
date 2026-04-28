@@ -120,11 +120,11 @@ spring:
       on-profile: dev
 oauth2:
   google: # TODO : 추후 확인 필요. 정말로 이 리다이렉트 URI가 맞는가?
-    redirect-uri: "https://dev-hangsha.wafflestudio.com/login/callback/google"
+    redirect-uri: "https://hangsha-dev.wafflestudio.com/login/callback/google"
   naver:
-    redirect-uri: "https://dev-hangsha.wafflestudio.com/login/callback/naver"
+    redirect-uri: "https://hangsha-dev.wafflestudio.com/login/callback/naver"
   kakao:
-    redirect-uri: "https://dev-hangsha.wafflestudio.com/login/callback/kakao"
+    redirect-uri: "https://hangsha-dev.wafflestudio.com/login/callback/kakao"
 
 ---
 # ==========================================
