@@ -25,6 +25,7 @@ class OAuth2SuccessHandler(
     private val tokenHasher: TokenHasher,
     private val cookieSupport: AuthCookieSupport,
     @Value("\${jwt.refresh-expiration-ms}") private val refreshExpirationMs: Long,
+    @Value("\${app.oauth2.front-redirect-uri}") private val frontRedirectUri: String,
 ) : SimpleUrlAuthenticationSuccessHandler() {
 
     override fun onAuthenticationSuccess(
@@ -33,8 +34,8 @@ class OAuth2SuccessHandler(
         authentication: Authentication
     ) {
         val oAuth2User = authentication.principal as OAuth2User
-        val email = oAuth2User.attributes["email"] as String
-
+        val email = oAuth2User.name
+        val isNewUser = oAuth2User.attributes["isNewUser"] as? Boolean ?: false
         val user = userRepository.findByEmail(email)
             ?: throw RuntimeException("User not found after OAuth2 login")
 
@@ -48,10 +49,9 @@ class OAuth2SuccessHandler(
         )
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString())
 
-        // 프론트엔드 주소로 변경(http://localhost:3000/oauth/callback)
-        val targetUrl = UriComponentsBuilder.fromUriString("http://localhost:8080/")
+        val targetUrl = UriComponentsBuilder.fromUriString(frontRedirectUri)
             .queryParam("accessToken", accessToken)
-            // .queryParam("refreshToken", refreshToken) // 필요시 주석 해제
+            .queryParam("isNewUser", isNewUser)
             .build().toUriString()
 
         redirectStrategy.sendRedirect(request, response, targetUrl)
