@@ -32,7 +32,7 @@ class EventSyncController(
         return runSync(events)
     }
 
-    @PostMapping("/sync", consumes = ["multipart/form-data"])
+    @PostMapping("/sync-file", consumes = ["multipart/form-data"])
     fun syncByFile(
         @RequestParam("file") file: MultipartFile,
     ): Map<String, Any> {
