@@ -17,6 +17,7 @@ data class EventDto(
     val applyEnd: LocalDateTime? = null,
     val eventStart: LocalDateTime? = null,
     val eventEnd: LocalDateTime? = null,
+    val isPeriodEvent: Boolean,
 
     val capacity: Int? = null,
     val applyCount: Int,
