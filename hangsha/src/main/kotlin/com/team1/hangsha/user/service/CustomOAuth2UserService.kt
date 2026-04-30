@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.security.oauth2.core.user.DefaultOAuth2User
 
 @Service
 class CustomOAuth2UserService(
@@ -33,47 +34,53 @@ class CustomOAuth2UserService(
 
         val authProvider = AuthProvider.valueOf(registrationId.uppercase())
 
-        // --- (이하 저장 로직은 기존과 동일) ---
-
-        // 3. 이미 연동된 계정인지 확인
+        var isNewUser = false
         val existingIdentity = userIdentityRepository.findByProviderAndProviderUserId(authProvider, providerId)
-        if (existingIdentity != null) {
-            return oAuth2User
+        if (existingIdentity == null) {
+            val existingUser = userRepository.findByEmail(email)
+
+            if (existingUser != null) {
+                userIdentityRepository.save(
+                    UserIdentity(
+                        userId = existingUser.id!!,
+                        provider = authProvider,
+                        providerUserId = providerId,
+                        email = email
+                    )
+                )
+            } else {
+                isNewUser = true
+                val savedUser = userRepository.save(
+                    User(
+                        email = email,
+                        username = name,
+                        profileImageUrl = picture
+                    )
+                )
+
+                userIdentityRepository.save(
+                    UserIdentity(
+                        userId = savedUser.id!!,
+                        provider = authProvider,
+                        providerUserId = providerId,
+                        email = email
+                    )
+                )
+            }
         }
 
-        // 4. 이메일로 기존 유저 확인 (계정 연동)
-        val existingUser = userRepository.findByEmail(email)
+        // 3. attributes에 "email"과 "isNewUser" 정보 추가
+        val customAttributes = oAuth2User.attributes.toMutableMap()
+        customAttributes["email"] = email
+        customAttributes["isNewUser"] = isNewUser
 
-        if (existingUser != null) {
-            userIdentityRepository.save(
-                UserIdentity(
-                    userId = existingUser.id!!,
-                    provider = authProvider,
-                    providerUserId = providerId,
-                    email = email
-                )
-            )
-        } else {
-        val savedUser = userRepository.save(
-            User(
-                email = email,
-                username = name,
-                profileImageUrl = picture
-            )
-        )
-
-        userIdentityRepository.save(
-            UserIdentity(
-                userId = savedUser.id!!,
-                provider = authProvider,
-                providerUserId = providerId,
-                email = email
-            )
+        // 4. 무조건 여기서 묶어서 반환 (조기 반환 버그 해결!)
+        return DefaultOAuth2User(
+            oAuth2User.authorities,
+            customAttributes,
+            "email" // 식별자 키
         )
     }
-
-    return oAuth2User
-}
 
     // 소셜별로 데이터를 꺼내는 도우미 함수
     private fun extractAttributes(registrationId: String, attributes: Map<String, Any>): OAuthAttributes {
