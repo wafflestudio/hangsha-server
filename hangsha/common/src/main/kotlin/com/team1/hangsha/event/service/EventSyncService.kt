@@ -18,6 +18,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 
 @Service
 class EventSyncService(
@@ -140,6 +141,32 @@ class EventSyncService(
         }
 
         return SyncResult(total = events.size, upserted = upserted, skipped = skipped)
+    }
+
+    @Transactional
+    fun closeExpiredRecruitingEvents(): Int {
+        // @TODO: 굉장히 하드코딩이긴 한데...
+        val statusGroupId = requireGroupId("모집현황")
+
+        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집중"
+            )
+
+        val closedStatusId = findCategoryId(statusGroupId, "모집마감")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집마감"
+            )
+
+        val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+
+        return eventRepository.closeExpiredRecruitingEvents(
+            recruitingStatusId = recruitingStatusId,
+            closedStatusId = closedStatusId,
+            now = now,
+        )
     }
 
     private fun requireGroupId(name: String): Long {

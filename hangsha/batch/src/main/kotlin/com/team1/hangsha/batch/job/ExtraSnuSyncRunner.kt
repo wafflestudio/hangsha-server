@@ -83,7 +83,12 @@ class ExtraSnuSyncRunner(
         if (opt.dumpOnly) {
             println("Crawled $totalCrawled rows (dump-only mode)")
         } else {
-            println("Synced $totalUpserted rows from $totalCrawled crawled events (skipped=$totalSkipped)")
+            val closedExpired = eventSyncService.closeExpiredRecruitingEvents() // 행사 마감 처리
+
+            println(
+                "Synced $totalUpserted rows from $totalCrawled crawled events " +
+                        "(skipped=$totalSkipped, closedExpired=$closedExpired)"
+            )
         }
         exitProcess(0)
     }
