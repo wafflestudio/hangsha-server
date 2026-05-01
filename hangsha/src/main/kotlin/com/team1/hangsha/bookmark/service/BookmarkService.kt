@@ -66,6 +66,7 @@ private fun Event.toEventDtoBookmarked(): EventDto = EventDto(
     applyEnd = applyEnd,
     eventStart = eventStart,
     eventEnd = eventEnd,
+    isPeriodEvent = isPeriodEvent,
     capacity = capacity,
     applyCount = applyCount,
     organization = organization,
