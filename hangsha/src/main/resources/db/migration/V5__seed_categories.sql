@@ -45,10 +45,6 @@ SELECT cg.id, '학습/진로상담', 5
 FROM category_groups cg WHERE cg.name = '프로그램 유형';
 
 INSERT INTO categories (group_id, name, sort_order)
-SELECT cg.id, '레크리에이션', 6
-FROM category_groups cg WHERE cg.name = '프로그램 유형';
-
-INSERT INTO categories (group_id, name, sort_order)
 SELECT cg.id, 'OpenLnL', 6
 FROM category_groups cg WHERE cg.name = '프로그램 유형';
 
