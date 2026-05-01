@@ -10,11 +10,11 @@ INSERT INTO category_groups (name, sort_order) VALUES
 -- 모집현황 categories seed
 -- ===============================
 INSERT INTO categories (group_id, name, sort_order)
-SELECT cg.id, '모집중', 1
+SELECT cg.id, '모집대기', 1
 FROM category_groups cg WHERE cg.name = '모집현황';
 
 INSERT INTO categories (group_id, name, sort_order)
-SELECT cg.id, '마감임박', 2
+SELECT cg.id, '모집중', 2
 FROM category_groups cg WHERE cg.name = '모집현황';
 
 INSERT INTO categories (group_id, name, sort_order)
@@ -45,8 +45,9 @@ SELECT cg.id, '학습/진로상담', 5
 FROM category_groups cg WHERE cg.name = '프로그램 유형';
 
 INSERT INTO categories (group_id, name, sort_order)
-SELECT cg.id, '레크리에이션', 6
+SELECT cg.id, 'OpenLnL', 6
 FROM category_groups cg WHERE cg.name = '프로그램 유형';
+
 
 INSERT INTO categories (group_id, name, sort_order)
 SELECT cg.id, '기타', 999
