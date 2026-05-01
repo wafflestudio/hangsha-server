@@ -10,7 +10,11 @@ INSERT INTO category_groups (name, sort_order) VALUES
 -- 모집현황 categories seed
 -- ===============================
 INSERT INTO categories (group_id, name, sort_order)
-SELECT cg.id, '모집중', 1
+SELECT cg.id, '모집대기', 1
+FROM category_groups cg WHERE cg.name = '모집현황';
+
+INSERT INTO categories (group_id, name, sort_order)
+SELECT cg.id, '모집중', 2
 FROM category_groups cg WHERE cg.name = '모집현황';
 
 INSERT INTO categories (group_id, name, sort_order)
