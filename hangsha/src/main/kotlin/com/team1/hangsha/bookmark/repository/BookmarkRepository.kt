@@ -114,6 +114,8 @@ private fun ResultSet.toEvent(): Event {
         eventStart = getLocalDateTimeOrNull("event_start"),
         eventEnd = getLocalDateTimeOrNull("event_end"),
 
+        isPeriodEvent = getBoolean("is_period_event"),
+
         capacity = getInt("capacity").let { if (wasNull()) null else it },
         applyCount = getInt("apply_count"),
 
