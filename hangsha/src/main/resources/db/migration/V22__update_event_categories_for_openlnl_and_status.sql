@@ -9,12 +9,3 @@ WHERE cg.name = '프로그램 유형'
     WHERE c.group_id = cg.id
       AND c.name = 'OpenLnL'
 );
-
--- 모집현황: 마감임박 -> 모집중 통합
-UPDATE events e
-    JOIN categories imminent ON imminent.id = e.status_id
-    JOIN category_groups cg ON cg.id = imminent.group_id
-    JOIN categories recruiting ON recruiting.group_id = imminent.group_id AND recruiting.name = '모집중'
-    SET e.status_id = recruiting.id
-WHERE cg.name = '모집현황'
-  AND imminent.name = '마감임박';
