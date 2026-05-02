@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
 
 interface EventRepository : CrudRepository<Event, Long> {
-    fun findByApplyLink(applyLink: String): Event?
+    fun existsByApplyLink(applyLink: String): Boolean
 
     @Query(
         """
@@ -26,6 +26,22 @@ interface EventRepository : CrudRepository<Event, Long> {
         @Param("keyStart") keyStart: LocalDateTime?,
         @Param("keyEnd") keyEnd: LocalDateTime?,
     ): Event?
+
+    @Modifying
+    @Query(
+        """
+    UPDATE events
+    SET status_id = :closedStatusId
+    WHERE status_id = :recruitingStatusId
+      AND apply_end IS NOT NULL
+      AND apply_end < :now
+    """
+    )
+    fun closeExpiredRecruitingEvents(
+        @Param("recruitingStatusId") recruitingStatusId: Long,
+        @Param("closedStatusId") closedStatusId: Long,
+        @Param("now") now: LocalDateTime,
+    ): Int
 
     @Modifying
     @Query("DELETE FROM events")

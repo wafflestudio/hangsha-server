@@ -1,19 +1,25 @@
 package com.team1.hangsha.batch.job
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
+import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.system.exitProcess
 
 @Component
 class ExtraSnuSyncRunner(
     private val eventSyncService: EventSyncService,
+    private val ociUploadService: OciUploadService,
+    private val objectMapper: ObjectMapper,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
@@ -24,6 +30,7 @@ class ExtraSnuSyncRunner(
         var totalUpserted = 0
         var totalCrawled = 0
         var totalSkipped = 0
+        val dumpBuffer = mutableListOf<CrawledProgramEvent>()
 
         ExtraSnuCrawler(
             delayMsBetweenPages = opt.delayMs,
@@ -43,21 +50,53 @@ class ExtraSnuSyncRunner(
                 val events = if (!opt.withDetails) {
                     baseEvents
                 } else {
-                    crawler.enrichDetails(baseEvents) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
+                    crawler.enrichDetails(baseEvents, ociUploadService) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
                 }
 
-                val result = eventSyncService.sync(events.map { it.toCrawledProgramEvent() })
+                // dumpOnly 여부와 상관없이 이미지 업로드는 항상 수행한다.
+                val eventsWithUploadedImages = crawler.uploadEventImages(events, ociUploadService)
 
+                val crawledEvents = eventsWithUploadedImages.map { it.toCrawledProgramEvent() }
+                if (opt.outFile != null) {
+                    dumpBuffer += crawledEvents
+                }
+
+                totalCrawled += crawledEvents.size
+                if (opt.dumpOnly) {
+                    println("Page $page crawled: total=${crawledEvents.size}")
+                    continue
+                }
+
+                val result = eventSyncService.sync(crawledEvents)
                 totalUpserted += result.upserted
-                totalCrawled += result.total
                 totalSkipped += result.skipped
 
                 println("Page $page synced: upserted=${result.upserted}, total=${result.total}, skipped=${result.skipped}")
             }
         }
 
-        println("Synced $totalUpserted rows from $totalCrawled crawled events (skipped=$totalSkipped)")
+        if (opt.outFile != null) {
+            writeDumpFile(opt.outFile, dumpBuffer)
+            println("Saved crawled events to ${opt.outFile} (count=${dumpBuffer.size})")
+        }
+
+        if (opt.dumpOnly) {
+            println("Crawled $totalCrawled rows (dump-only mode)")
+        } else {
+            val closedExpired = eventSyncService.closeExpiredRecruitingEvents() // 행사 마감 처리
+
+            println(
+                "Synced $totalUpserted rows from $totalCrawled crawled events " +
+                        "(skipped=$totalSkipped, closedExpired=$closedExpired)"
+            )
+        }
         exitProcess(0)
+    }
+
+    private fun writeDumpFile(outFile: String, rows: List<CrawledProgramEvent>) {
+        val path = Path.of(outFile).toAbsolutePath().normalize()
+        path.parent?.let { Files.createDirectories(it) }
+        objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), rows)
     }
 }
 
@@ -67,6 +106,8 @@ private data class BatchArgs(
     val delayMs: Long = 200,
     val withDetails: Boolean = true,
     val detailDelayMs: Long = 100,
+    val outFile: String? = null,
+    val dumpOnly: Boolean = false,
 ) {
     companion object {
         fun from(args: ApplicationArguments): BatchArgs {
@@ -84,6 +125,8 @@ private data class BatchArgs(
                 delayMs = single("delayMs")?.toLong() ?: 200L,
                 withDetails = withDetails,
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
+                outFile = single("outFile"),
+                dumpOnly = args.containsOption("dumpOnly"),
             )
         }
     }

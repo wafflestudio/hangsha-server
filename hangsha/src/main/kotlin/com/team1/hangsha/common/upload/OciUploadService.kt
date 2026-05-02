@@ -11,6 +11,8 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
+// OciUploadService가 common에도 존재하는데 main에도 존재...?
+
 @Service
 class OciUploadService(
     private val objectStorage: ObjectStorage,

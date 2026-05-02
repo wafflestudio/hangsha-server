@@ -63,9 +63,8 @@ class SecurityConfig(
                         // 주최 기관
                         "/api/v1/category-groups/**",
                         "/api/v1/categories/**",
-                        // @TODO: 자동 크롤링 시 삭제 필요
-                        "/admin/events/sync",
-                        "/admin/events/delete",
+                        // admin
+                        "/admin/**",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
@@ -73,12 +72,12 @@ class SecurityConfig(
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
-            /*
+
             .oauth2Login { oauth2 ->
                 oauth2.userInfoEndpoint { it.userService(customOAuth2UserService) } // 유저 정보 처리 로직
                 oauth2.successHandler(oAuth2SuccessHandler)
             }
-            */
+
         return http.build()
     }
 }

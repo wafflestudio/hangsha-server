@@ -10,8 +10,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.util.concurrent.TimeUnit
+import com.team1.hangsha.common.upload.OciUploadService
+import org.jsoup.parser.Parser
 
 class ExtraSnuCrawler(
     private val baseUrl: String = "https://extra.snu.ac.kr",
@@ -70,6 +73,7 @@ class ExtraSnuCrawler(
      */
     fun enrichDetails(
         events: List<ProgramEvent>,
+        ociUploadService: OciUploadService,
         shouldFetch: (ProgramEvent) -> Boolean = { true }
     ): List<ProgramEvent> {
         return events.map { e ->
@@ -78,19 +82,25 @@ class ExtraSnuCrawler(
             if (!shouldFetch(e)) return@map e
 
             val html1 = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
-            var sessions = parseDetailSessions(html1)
-            var mainHtml = parseMainContentHtml(html1)
+            var parsed = parseDetailData(
+                html = html1,
+                ociUploadService = ociUploadService,
+                cookieHeader = buildCookieHeader()
+            )
 
-            if (sessions.isEmpty()) {
+            if (parsed.sessions.isEmpty()) { // fallback once
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
-                    sessions = parseDetailSessions(html2)
-                    mainHtml = parseMainContentHtml(html2)
+                    parsed = parseDetailData(
+                        html = html2,
+                        ociUploadService = ociUploadService,
+                        cookieHeader = buildCookieHeader()
+                    )
                 }
             }
 
             if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
-            e.copy(detailSessions = sessions, mainContentHtml = mainHtml)
+            e.copy(detailSessions = parsed.sessions, mainContentHtml = parsed.mainContentHtml)
         }
     }
 
@@ -137,12 +147,13 @@ class ExtraSnuCrawler(
         if (debug) println("\n[PW] goto(view) => $viewUrl")
 
         fun isWait(u: String) = u.contains("/wait.jsp")
-        fun isDetail(u: String) = u.contains("/ptfol/imng/icmpNsbjtPgm/findIcmpNsbjtPgmInfo.do")
+        fun isDetail(u: String) =
+            u.contains("/ptfol/imng/icmpNsbjtPgm/findIcmpNsbjtPgmInfo.do") ||
+            u.contains("/ptfol/cous/staGrp/rcri/view.do")
 
         val page = pwContext.newPage()
 
         return try {
-            // ✅ domcontentloaded 기다리지 말고 'commit'까지만 (응답만 받으면 됨)
             page.navigate(
                 viewUrl,
                 Page.NavigateOptions()
@@ -150,7 +161,7 @@ class ExtraSnuCrawler(
                     .setTimeout(20_000.0)
             )
 
-            val hardDeadlineMs = System.currentTimeMillis() + 120_000L // 총 2분까지 기다림
+            val hardDeadlineMs = System.currentTimeMillis() + 120_000L
             var lastUrl = page.url()
 
             while (System.currentTimeMillis() < hardDeadlineMs) {
@@ -162,50 +173,87 @@ class ExtraSnuCrawler(
                     return null
                 }
 
-                // 1) wait.jsp면: 서버가 대기열 처리 중. 재navigate 하지 말고 잠깐 기다림.
                 if (isWait(curUrl)) {
                     if (debug) println("[PW] wait.jsp... (sleep)")
-                    page.waitForTimeout(800.0 + Math.random() * 1200.0) // 0.8~2.0s
+                    page.waitForTimeout(800.0 + Math.random() * 1200.0)
                     continue
                 }
 
-                // 2) 최종 상세(findIcmp...)로 왔으면: 실제 기간 값이 들어올 때까지 기다렸다가 content
                 if (isDetail(curUrl)) {
-                    runCatching {
-                        page.waitForFunction(
-                            """
-                        () => {
-                          const ths = Array.from(document.querySelectorAll("th"));
-                          const th = ths.find(x => (x.textContent || "").includes("교육(활동)기간"));
-                          if (!th) return false;
-                          const td = th.nextElementSibling;
-                          if (!td) return false;
-                          const txt = (td.textContent || "").replace(/\s+/g, " ").trim();
-                          return /\d{4}\.\d{2}\.\d{2}\./.test(txt) && /\d{2}:\d{2}/.test(txt);
+                    val detailDeadlineMs = System.currentTimeMillis() + 10_000L
+
+                    while (System.currentTimeMillis() < detailDeadlineMs) {
+                        val titles = runCatching {
+                            @Suppress("UNCHECKED_CAST")
+                            page.evalOnSelectorAll(
+                                "div.cont_box p.cont_tit",
+                                "els => els.map(el => (el.textContent || '').replace(/\\s+/g, ' ').trim())"
+                            ) as List<String>
+                        }.getOrDefault(emptyList())
+
+                        if (debug) println("[PW] titles=$titles")
+
+                        // 아직 본문 골격이 안 뜬 상태
+                        if (titles.isEmpty()) {
+                            page.waitForTimeout(500.0)
+                            continue
                         }
-                        """.trimIndent(),
-                            Page.WaitForFunctionOptions().setTimeout(10_000.0)
-                        )
-                    }.onFailure {
-                        runCatching {
-                            page.waitForLoadState(LoadState.NETWORKIDLE)
+
+                        // 강좌 정보 자체가 없는 페이지면 더 기다리지 말고 그냥 반환
+                        if (!titles.contains("강좌 정보")) {
+                            val html = try {
+                                page.content()
+                            } catch (e: Exception) {
+                                page.waitForTimeout(500.0)
+                                page.content()
+                            }
+                            if (debug) println("[PW] OK detail(no lecture info) url=$curUrl htmlLen=${html.length}")
+                            return html
                         }
-                        page.waitForTimeout(1500.0)
+
+                        // 강좌 정보가 있으면 교육(활동)기간 값이 실제로 채워질 때까지 조금 더 기다림
+                        val hasPeriod = runCatching {
+                            page.evaluate(
+                                """
+                            () => {
+                              const ths = Array.from(document.querySelectorAll("th"));
+                              const th = ths.find(x => (x.textContent || "").includes("교육(활동)기간"));
+                              if (!th) return false;
+                              const td = th.nextElementSibling;
+                              if (!td) return false;
+                              const txt = (td.textContent || "").replace(/\s+/g, " ").trim();
+                              return /\d{4}\.\d{2}\.\d{2}\./.test(txt) && /\d{2}:\d{2}/.test(txt);
+                            }
+                            """.trimIndent()
+                            ) as Boolean
+                        }.getOrDefault(false)
+
+                        if (hasPeriod) {
+                            val html = try {
+                                page.content()
+                            } catch (e: Exception) {
+                                page.waitForTimeout(500.0 + Math.random() * 600.0)
+                                page.content()
+                            }
+                            if (debug) println("[PW] OK detail(with lecture info) url=$curUrl htmlLen=${html.length}")
+                            return html
+                        }
+
+                        page.waitForTimeout(500.0)
                     }
 
-                    // navigating 중 content() 터질 수 있어 방어
+                    // detail 페이지까지는 왔는데 10초 동안 period가 안 떴음
+                    // 그래도 HTML은 넘기고, 실제 판정은 Kotlin parse 쪽에서 처리
                     val html = try {
                         page.content()
                     } catch (e: Exception) {
-                        page.waitForTimeout(500.0 + Math.random() * 600.0)
+                        page.waitForTimeout(500.0)
                         page.content()
                     }
-
-                    if (debug) println("[PW] OK detail url=$curUrl htmlLen=${html.length}")
+                    if (debug) println("[PW] OK detail(timeout fallback) url=$curUrl htmlLen=${html.length}")
                     return html
                 }
 
-                // 3) 그 외 상태: 아직 view.do이거나 중간 이동 중
                 page.waitForTimeout(400.0 + Math.random() * 600.0)
             }
 
@@ -255,8 +303,8 @@ class ExtraSnuCrawler(
                 label to value
             }.orEmpty()
 
-        val applyCount = counts["신청"]?.toIntOrNullSafe()
-        val capacity = counts["정원"]?.toIntOrNullSafe()
+        val applyCount = counts["신청"]?.toIntOrNullSafe() ?: 0
+        val capacity = counts["정원"]?.toIntOrNullSafe() ?: 0
 
         val imageUrl = card.selectFirst(".img_wrap img")
             ?.absUrl("src")
@@ -288,9 +336,7 @@ class ExtraSnuCrawler(
     // ---------------------------
     // ✅ 상세 페이지 -> DetailSession (start/end/time 평탄화, n회차, 우측 날짜 생략 처리)
     // ---------------------------
-    private fun parseDetailSessions(html: String): List<DetailSession> {
-        val doc = Jsoup.parse(html, baseUrl)
-
+    private fun parseDetailSessions(doc: Document): List<DetailSession> {
         val table = doc.select("table.table.t_view.add_tr")
             .firstOrNull { it.text().normalize().contains("교육(활동)기간") }
             ?: return emptyList()
@@ -336,15 +382,15 @@ class ExtraSnuCrawler(
 
     /**
      * ✅ "프로그램 주요내용" 섹션의 td_box HTML을 "그대로" 저장하되,
-     * - img, a 태그는 제거
      *
      * 반환값은 td_box의 innerHTML.
      * 없으면 null.
      */
-    private fun parseMainContentHtml(html: String): String? {
-        val doc = Jsoup.parse(html, baseUrl)
-
-        // cont_box 중에서 cont_tit == "프로그램 주요내용" 인 박스 찾기
+    private fun parseMainContentHtml(
+        doc: Document,
+        ociUploadService: OciUploadService,
+        cookieHeader: String,
+    ): String? {
         val box = doc.select("div.cont_box")
             .firstOrNull {
                 it.selectFirst("p.cont_tit")?.text()?.normalize() == "프로그램 주요내용"
@@ -352,14 +398,52 @@ class ExtraSnuCrawler(
 
         val tdBox = box.selectFirst("div.td_box") ?: return null
 
-        // img, a 제거
-        tdBox.select("img").remove()
-        tdBox.select("a").remove()
+        tdBox.select("img").forEach { img ->
+            val rawSrc = img.absUrl("src").ifBlank {
+                val decoded = Parser.unescapeEntities(img.attr("src"), false)
+                when {
+                    decoded.startsWith("http://") || decoded.startsWith("https://") -> decoded
+                    decoded.startsWith("/") -> "$baseUrl$decoded"
+                    else -> "$baseUrl/$decoded"
+                }
+            }
 
-        // 혹시 script/style 섞이면 제거 (안전)
+            if (rawSrc.isBlank()) {
+                img.remove()
+                return@forEach
+            }
+
+            val downloaded = runCatching {
+                downloadImage(rawSrc, cookieHeader)
+            }.getOrNull()
+
+            if (downloaded == null) {
+                img.remove()
+                return@forEach
+            }
+
+            val uploadedUrl = runCatching {
+                ociUploadService.uploadBytesIfAbsent(
+                    prefix = "events/detail",
+                    originalFilename = null,
+                    bytes = downloaded.bytes,
+                    contentType = downloaded.contentType,
+                )
+            }.getOrNull()
+
+            if (uploadedUrl == null) {
+                img.remove()
+                return@forEach
+            }
+
+            img.attr("src", uploadedUrl)
+            img.removeAttr("onclick")
+            img.removeAttr("usemap")
+        }
+
+        tdBox.select("a").forEach { it.unwrap() }
         tdBox.select("script, style").remove()
 
-        // 빈 p 같은 거 정리(선택)
         tdBox.select("p").forEach { p ->
             if (p.text().normalize().isBlank() && p.select("br").isEmpty() && p.childrenSize() == 0) {
                 p.remove()
@@ -370,6 +454,21 @@ class ExtraSnuCrawler(
         return out.ifBlank { null }
     }
 
+    private fun parseDetailData(
+        html: String,
+        ociUploadService: OciUploadService,
+        cookieHeader: String,
+    ): ParsedDetailData {
+        val doc = Jsoup.parse(html, baseUrl)
+        val sessions = parseDetailSessions(doc)
+        val mainContentHtml = parseMainContentHtml(doc, ociUploadService, cookieHeader)
+        return ParsedDetailData(sessions = sessions, mainContentHtml = mainContentHtml)
+    }
+
+    // ---------------------------
+    // helpers
+    // ---------------------------
+
     private fun tdAfterThContains(tr: Element, label: String): String? {
         val th = tr.select("th")
             .firstOrNull { it.text().normalize().contains(label) }
@@ -378,15 +477,6 @@ class ExtraSnuCrawler(
         val td = th.nextElementSibling() ?: return null
         return td.text().normalize().takeIf { it.isNotBlank() }
     }
-
-    // ---------------------------
-    // helpers
-    // ---------------------------
-
-    private fun signatureOf(events: List<ProgramEvent>): String =
-        events.take(5).joinToString("|") { e ->
-            "${e.dataSeq}:${e.title}:${e.status}:${e.applyStart}:${e.applyEnd}"
-        }
 
     private fun String.toIntOrNullSafe(): Int? {
         val cleaned = this.replace(",", "").trim()
@@ -483,4 +573,111 @@ class ExtraSnuCrawler(
         val html = fetchListPage(pageNo) ?: return emptyList()
         return parseListHtml(html)
     }
+
+    fun uploadEventImages(
+        events: List<ProgramEvent>,
+        ociUploadService: OciUploadService,
+    ): List<ProgramEvent> {
+        val cookieHeader = buildCookieHeader()
+
+        if (cookieHeader.isBlank()) {
+            if (debug) println("[IMG] no playwright cookies; skip image upload")
+            return events
+        }
+
+        return events.map { event ->
+            val rawUrl = event.imageUrl?.trim()
+            if (rawUrl.isNullOrBlank()) return@map event
+
+            val downloaded = runCatching {
+                downloadImage(rawUrl, cookieHeader)
+            }.onFailure {
+                if (debug) println("[IMG] download fail dataSeq=${event.dataSeq} msg=${it.message}")
+            }.getOrNull()
+
+            if (downloaded == null) {
+                return@map event.copy(imageUrl = null)
+            }
+
+            val uploadedUrl = runCatching {
+                ociUploadService.uploadBytesIfAbsent(
+                    prefix = "events",
+                    originalFilename = "event-${event.dataSeq ?: "unknown"}",
+                    bytes = downloaded.bytes,
+                    contentType = downloaded.contentType,
+                )
+            }.onFailure {
+                if (debug) println("[IMG] upload fail dataSeq=${event.dataSeq} msg=${it.message}")
+            }.getOrNull()
+
+            if (uploadedUrl == null) {
+                event.copy(imageUrl = null)
+            } else {
+                if (debug) println("[IMG] uploaded dataSeq=${event.dataSeq} -> $uploadedUrl")
+                event.copy(imageUrl = uploadedUrl)
+            }
+        }
+    }
+
+    private fun buildCookieHeader(): String {
+        return pwContext.cookies()
+            .joinToString("; ") { "${it.name}=${it.value}" }
+    }
+
+    private fun downloadImage(rawUrl: String, cookieHeader: String): DownloadedImage? {
+        val absoluteUrl = when {
+            rawUrl.startsWith("http://") || rawUrl.startsWith("https://") -> rawUrl
+            rawUrl.startsWith("/") -> "$baseUrl$rawUrl"
+            else -> "$baseUrl/$rawUrl"
+        }
+
+        val req = Request.Builder()
+            .url(absoluteUrl)
+            .get()
+            .header("Referer", "$baseUrl$listPath")
+            .header("User-Agent", userAgent)
+            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+            .header("Cookie", cookieHeader)
+            .build()
+
+        if (debug) println("[IMG] GET $absoluteUrl")
+
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                if (debug) println("[IMG] FAIL code=${resp.code} url=$absoluteUrl")
+                return null
+            }
+
+            val body = resp.body ?: return null
+            val bytes = body.bytes()
+            if (bytes.isEmpty()) return null
+
+            val contentType = body.contentType()?.toString() ?: "application/octet-stream"
+            val extension = when (contentType.lowercase()) {
+                "image/jpeg", "image/jpg" -> "jpg"
+                "image/png" -> "png"
+                "image/gif" -> "gif"
+                "image/webp" -> "webp"
+                "image/bmp" -> "bmp"
+                else -> "bin"
+            }
+
+            return DownloadedImage(
+                bytes = bytes,
+                contentType = contentType,
+                extension = extension,
+            )
+        }
+    }
+
+    private data class DownloadedImage(
+        val bytes: ByteArray,
+        val contentType: String,
+        val extension: String,
+    )
+
+    private data class ParsedDetailData(
+        val sessions: List<DetailSession>,
+        val mainContentHtml: String?,
+    )
 }

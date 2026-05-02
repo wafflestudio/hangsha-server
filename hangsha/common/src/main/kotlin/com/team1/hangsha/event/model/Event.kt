@@ -29,6 +29,8 @@ data class Event(
     val eventStart: LocalDateTime? = null,
     val eventEnd: LocalDateTime? = null,
 
+    val isPeriodEvent: Boolean = false,
+
     val capacity: Int? = null,
     val applyCount: Int = 0,
 
