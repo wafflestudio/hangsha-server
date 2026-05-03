@@ -23,9 +23,10 @@ class JwtTokenProvider(
 
     private val key = Keys.hmacShaKeyFor(secretKey.toByteArray())
 
-    fun createAccessToken(userId: Long): String {
+    fun createAccessToken(userId: Long, isAdmin: Boolean): String {
         return createToken(
             userId = userId,
+            isAdmin = isAdmin,
             expirationMs = accessExpirationMs,
             type = "ACCESS",
         )
@@ -41,6 +42,7 @@ class JwtTokenProvider(
 
     fun createToken(
         userId: Long,
+        isAdmin: Boolean,
         expirationMs: Long,
         type: String
     ): String {
@@ -54,6 +56,7 @@ class JwtTokenProvider(
             .setId(jti)
             .claim("jti", jti)
             .claim("type", type)
+            .claim("isAdmin", isAdmin)
             .setIssuedAt(now)
             .setExpiration(expiry)
             .signWith(key, SignatureAlgorithm.HS256)
@@ -69,6 +72,9 @@ class JwtTokenProvider(
 
     fun getUserId(token: String): Long =
         parseClaims(token).subject.toLong()
+
+    fun getIsAdmin(token: String): Boolean =
+        parseClaims(token)["isAdmin"] as? Boolean ?: false
 
     fun validateAccessToken(token: String): Boolean {
         try {

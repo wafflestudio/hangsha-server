@@ -63,12 +63,11 @@ class SecurityConfig(
                         // 주최 기관
                         "/api/v1/category-groups/**",
                         "/api/v1/categories/**",
-                        // admin
-                        "/admin/**",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
                     ).permitAll()
+                    .requestMatchers("/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
