@@ -100,7 +100,9 @@ class EventService(
             .toSortedMap()
             .mapValues { (_, dayEvents) ->
                 val sorted = dayEvents.sortedWith(
-                    compareBy<Event> { effectiveStart(it) }.thenBy { it.id ?: Long.MAX_VALUE }
+                    compareBy<Event> { it.matchedInterestPriority(interestPriorityByCategoryId) ?: Int.MAX_VALUE }
+                        .thenBy { effectiveStart(it) }
+                        .thenBy { it.id ?: Long.MAX_VALUE }
                 )
                 MonthEventResponse.DayBucket(
                     events = sorted.map { e ->
