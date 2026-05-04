@@ -114,11 +114,12 @@ class EventSyncService(
                     .toList()
 
                 val title = e.title!!.trim()
-                val isPeriodEvent = e.isPeriodEvent ?: EventPeriodPolicy.isPeriodEvent(
-                    title = title,
-                    eventStart = eventStart,
-                    eventEnd = eventEnd,
-                )
+                val isPeriodEvent =
+                    e.isPeriodEvent == true || EventPeriodPolicy.isPeriodEvent(
+                        title = title,
+                        eventStart = eventStart,
+                        eventEnd = eventEnd,
+                    )
 
                 val model = Event(
                     id = existing?.id,
