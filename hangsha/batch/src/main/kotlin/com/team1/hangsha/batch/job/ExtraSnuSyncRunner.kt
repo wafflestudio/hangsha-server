@@ -151,8 +151,10 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
     )
 }
 
-private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent =
-    CrawledProgramEvent(
+private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
+    val isPeriodEvent = isPeriodEventFromList()
+
+    return CrawledProgramEvent(
         dataSeq = dataSeq,
         majorTypes = majorTypes,
         title = title,
@@ -167,8 +169,14 @@ private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent =
         imageUrl = imageUrl,
         tags = tags,
         mainContentHtml = mainContentHtml,
-        detailSessions = detailSessions.map { it.toCrawledDetailSession() }
+        isPeriodEvent = isPeriodEvent,
+        detailSessions = if (isPeriodEvent) {
+            emptyList()
+        } else {
+            detailSessions.map { it.toCrawledDetailSession() }
+        }
     )
+}
 
 private fun DetailSession.toCrawledDetailSession(): CrawledDetailSession =
     CrawledDetailSession(
