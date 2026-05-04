@@ -69,6 +69,8 @@ class SecurityConfig(
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
+                        "/oauth2/authorization/**",
+                        "/login/oauth2/code/**",
                     ).permitAll()
                     .anyRequest().authenticated()
             }
