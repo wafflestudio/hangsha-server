@@ -23,7 +23,7 @@ class JwtTokenProvider(
 
     private val key = Keys.hmacShaKeyFor(secretKey.toByteArray())
 
-    fun createAccessToken(userId: Long, isAdmin: Boolean): String {
+    fun createAccessToken(userId: Long, isAdmin: Boolean = false): String {
         return createToken(
             userId = userId,
             isAdmin = isAdmin,
@@ -37,6 +37,7 @@ class JwtTokenProvider(
             userId = userId,
             expirationMs = refreshExpirationMs,
             type = "REFRESH",
+            isAdmin = false,
         )
     }
 
