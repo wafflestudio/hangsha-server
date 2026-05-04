@@ -40,7 +40,7 @@ class EventQueryRepository(
 
             appendExcludedKeywordsFilter(userId)
 
-            append("\nORDER BY COALESCE(e.event_start, e.apply_start) ASC, e.id ASC")
+            appendEventOrderBy(userId)
         }
 
         val params = mutableMapOf<String, Any>(
@@ -130,7 +130,7 @@ class EventQueryRepository(
 
             appendExcludedKeywordsFilter(userId)
 
-            append("\nORDER BY COALESCE(e.event_start, e.apply_start) DESC, e.id DESC")
+            appendEventOrderBy(userId)
             append("\nLIMIT :limit OFFSET :offset")
         }
 
@@ -250,6 +250,33 @@ private fun StringBuilder.appendExcludedKeywordsFilter(userId: Long?) {
                 OR COALESCE(e.main_content_html, '') LIKE CONCAT('%', uek.keyword, '%')
               )
           )
+        """.trimIndent()
+    )
+}
+
+private fun StringBuilder.appendEventOrderBy(userId: Long?) {
+    if (userId == null) {
+        append("\nORDER BY COALESCE(e.event_start, e.apply_start) ASC, e.id ASC")
+        return
+    }
+
+    val matchedPriorityExpr = """
+        (
+          SELECT MIN(uic.priority)
+          FROM user_interest_categories uic
+          WHERE uic.user_id = :userId
+            AND uic.category_id IN (e.status_id, e.event_type_id, e.org_id)
+        )
+    """.trimIndent()
+
+    append(
+        """
+
+        ORDER BY
+          CASE WHEN $matchedPriorityExpr IS NULL THEN 1 ELSE 0 END ASC,
+          $matchedPriorityExpr ASC,
+          COALESCE(e.event_start, e.apply_start) ASC,
+          e.id ASC
         """.trimIndent()
     )
 }

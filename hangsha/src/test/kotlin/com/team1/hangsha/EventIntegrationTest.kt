@@ -198,7 +198,7 @@ class EventIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `이벤트 일 조회 기본 page size total items 동작하고 정렬 desc 이다`() {
+    fun `이벤트 일 조회 기본 page size total items 동작하고 정렬 asc 이다`() {
         val date = LocalDate.now()
         val dayStart = date.atStartOfDay()
 
@@ -224,7 +224,7 @@ class EventIntegrationTest : IntegrationTestBase() {
 
         val root = objectMapper.readTree(res.response.contentAsString)
         val titles = root["items"].map { it["title"].asText() }
-        assertEquals(listOf("D3", "D2", "D1"), titles)
+        assertEquals(listOf("D1", "D2", "D3"), titles)
     }
 
     @Test

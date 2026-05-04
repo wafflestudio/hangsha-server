@@ -39,7 +39,7 @@ class OAuth2SuccessHandler(
         val user = userRepository.findByEmail(email)
             ?: throw RuntimeException("User not found after OAuth2 login")
 
-        val accessToken = jwtTokenProvider.createAccessToken(user.id!!)
+        val accessToken = jwtTokenProvider.createAccessToken(user.id!!, user.isAdmin)
         val refreshToken = jwtTokenProvider.createRefreshToken(user.id!!)
         saveRefresh(user.id!!, refreshToken)
 

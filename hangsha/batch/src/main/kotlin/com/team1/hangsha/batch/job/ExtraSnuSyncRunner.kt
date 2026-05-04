@@ -7,12 +7,14 @@ import com.team1.hangsha.batch.crawler.ProgramEvent
 import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
+import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDate
 import kotlin.system.exitProcess
 
 @Component
@@ -50,7 +52,9 @@ class ExtraSnuSyncRunner(
                 val events = if (!opt.withDetails) {
                     baseEvents
                 } else {
-                    crawler.enrichDetails(baseEvents, ociUploadService) // { e -> e.status != "모집마감" } // @TODO: 위의 0001, 0002, ... 와 같이 매직 넘버라, ENUM화?
+                    crawler.enrichDetails(baseEvents, ociUploadService) { e ->
+                        !e.isPeriodEventFromList()
+                    }
                 }
 
                 // dumpOnly 여부와 상관없이 이미지 업로드는 항상 수행한다.
@@ -130,6 +134,18 @@ private data class BatchArgs(
             )
         }
     }
+}
+
+private fun ProgramEvent.isPeriodEventFromList(): Boolean {
+    val title = title?.trim().orEmpty()
+    val eventStart = activityStart?.let { LocalDate.parse(it).atStartOfDay() }
+    val eventEnd = activityEnd?.let { LocalDate.parse(it).atTime(23, 59, 59) }
+
+    return EventPeriodPolicy.isPeriodEvent(
+        title = title,
+        eventStart = eventStart,
+        eventEnd = eventEnd,
+    )
 }
 
 private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent =

@@ -14,6 +14,8 @@ data class User (
     var email: String? = null,
     @Column("profile_image_url")
     var profileImageUrl: String? = null,
+    @Column("is_admin")
+    var isAdmin: Boolean = false,
     @CreatedDate
     var createdAt: Instant? = null,
     @LastModifiedDate
