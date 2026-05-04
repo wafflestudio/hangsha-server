@@ -52,9 +52,12 @@ class ExtraSnuSyncRunner(
                 val events = if (!opt.withDetails) {
                     baseEvents
                 } else {
-                    crawler.enrichDetails(baseEvents, ociUploadService) { e ->
-                        !e.isPeriodEventFromList()
-                    }
+                    crawler.enrichDetails(
+                        events = baseEvents,
+                        ociUploadService = ociUploadService,
+                        shouldFetch = { true },
+                        shouldUseDetailSessions = { e -> !e.isPeriodEventFromList() }
+                    )
                 }
 
                 // dumpOnly 여부와 상관없이 이미지 업로드는 항상 수행한다.
