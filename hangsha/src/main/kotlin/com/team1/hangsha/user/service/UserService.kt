@@ -99,8 +99,10 @@ class UserService(
         if (!BCrypt.checkpw(password, hashed)) throw DomainException(ErrorCode.AUTH_INVALID_CREDENTIALS)
 
         val userId = identity.userId
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
 
-        val access = jwtTokenProvider.createAccessToken(userId)
+        val access = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val refresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, refresh)
@@ -115,7 +117,10 @@ class UserService(
 
     @Transactional
     fun issueAfterSocialLogin(userId: Long): IssuedTokens {
-        val access = jwtTokenProvider.createAccessToken(userId)
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        val access = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val refresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, refresh)
@@ -151,7 +156,10 @@ class UserService(
             throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
         }
 
-        val newAccess = jwtTokenProvider.createAccessToken(userId)
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        val newAccess = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val newRefresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, newRefresh)

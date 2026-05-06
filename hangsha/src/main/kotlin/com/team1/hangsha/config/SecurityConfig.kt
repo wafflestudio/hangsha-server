@@ -63,15 +63,13 @@ class SecurityConfig(
                         // 주최 기관
                         "/api/v1/category-groups/**",
                         "/api/v1/categories/**",
-                        // @TODO: 자동 크롤링 시 삭제 필요
-                        "/admin/events/sync",
-                        "/admin/events/delete",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
                         "/oauth2/authorization/**",
                         "/login/oauth2/code/**",
                     ).permitAll()
+                    .requestMatchers("/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)

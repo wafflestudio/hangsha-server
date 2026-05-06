@@ -10,6 +10,7 @@ import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
+import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.repository.EventRepository
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
@@ -18,6 +19,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 
 @Service
 class EventSyncService(
@@ -52,7 +54,11 @@ class EventSyncService(
             val applyStart = e.applyStart?.let { dateStart(it) }
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
 
-            val sessions = patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
+            val sessions = if (e.isPeriodEvent == true) {
+                emptyList()
+            } else {
+                patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
+            }
             val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
@@ -107,9 +113,17 @@ class EventSyncService(
                     .distinct()
                     .toList()
 
+                val title = e.title!!.trim()
+                val isPeriodEvent =
+                    e.isPeriodEvent == true || EventPeriodPolicy.isPeriodEvent(
+                        title = title,
+                        eventStart = eventStart,
+                        eventEnd = eventEnd,
+                    )
+
                 val model = Event(
                     id = existing?.id,
-                    title = e.title!!.trim(),
+                    title = title,
                     imageUrl = e.imageUrl?.trim(),
                     operationMode = e.operationMode?.trim(),
 
@@ -120,6 +134,7 @@ class EventSyncService(
                     applyEnd = applyEnd,
                     eventStart = eventStart,
                     eventEnd = eventEnd,
+                    isPeriodEvent = isPeriodEvent,
 
                     capacity = e.capacity ?: 0,
                     applyCount = e.applyCount ?: 0,
@@ -140,6 +155,32 @@ class EventSyncService(
         }
 
         return SyncResult(total = events.size, upserted = upserted, skipped = skipped)
+    }
+
+    @Transactional
+    fun closeExpiredRecruitingEvents(): Int {
+        // @TODO: 굉장히 하드코딩이긴 한데...
+        val statusGroupId = requireGroupId("모집현황")
+
+        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집중"
+            )
+
+        val closedStatusId = findCategoryId(statusGroupId, "모집마감")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집마감"
+            )
+
+        val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+
+        return eventRepository.closeExpiredRecruitingEvents(
+            recruitingStatusId = recruitingStatusId,
+            closedStatusId = closedStatusId,
+            now = now,
+        )
     }
 
     private fun requireGroupId(name: String): Long {
@@ -290,8 +331,12 @@ class EventSyncService(
             if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
         }
 
+        val newTitle = req.title?.trim()?.takeIf { it.isNotBlank() } ?: existing.title
+        val newEventStart = req.eventStart ?: existing.eventStart
+        val newEventEnd = req.eventEnd ?: existing.eventEnd
+
         val updated = existing.copy(
-            title = req.title?.trim()?.takeIf { it.isNotBlank() } ?: existing.title,
+            title = newTitle,
             imageUrl = req.imageUrl?.trim() ?: existing.imageUrl,
             operationMode = req.operationMode?.trim() ?: existing.operationMode,
 
@@ -304,8 +349,14 @@ class EventSyncService(
 
             applyStart = req.applyStart ?: existing.applyStart,
             applyEnd = req.applyEnd ?: existing.applyEnd,
-            eventStart = req.eventStart ?: existing.eventStart,
-            eventEnd = req.eventEnd ?: existing.eventEnd,
+            eventStart = newEventStart,
+            eventEnd = newEventEnd,
+
+            isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
+                title = newTitle,
+                eventStart = newEventStart,
+                eventEnd = newEventEnd,
+            ),
 
             capacity = req.capacity ?: existing.capacity,
             applyCount = req.applyCount ?: existing.applyCount,
