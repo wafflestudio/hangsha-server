@@ -54,7 +54,11 @@ class EventSyncService(
             val applyStart = e.applyStart?.let { dateStart(it) }
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
 
-            val sessions = patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
+            val sessions = if (e.isPeriodEvent == true) {
+                emptyList()
+            } else {
+                patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
+            }
             val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
@@ -110,11 +114,12 @@ class EventSyncService(
                     .toList()
 
                 val title = e.title!!.trim()
-                val isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
-                    title = title,
-                    eventStart = eventStart,
-                    eventEnd = eventEnd,
-                )
+                val isPeriodEvent =
+                    e.isPeriodEvent == true || EventPeriodPolicy.isPeriodEvent(
+                        title = title,
+                        eventStart = eventStart,
+                        eventEnd = eventEnd,
+                    )
 
                 val model = Event(
                     id = existing?.id,

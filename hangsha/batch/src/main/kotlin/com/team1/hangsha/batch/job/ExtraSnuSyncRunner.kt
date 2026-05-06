@@ -52,9 +52,12 @@ class ExtraSnuSyncRunner(
                 val events = if (!opt.withDetails) {
                     baseEvents
                 } else {
-                    crawler.enrichDetails(baseEvents, ociUploadService) { e ->
-                        !e.isPeriodEventFromList()
-                    }
+                    crawler.enrichDetails(
+                        events = baseEvents,
+                        ociUploadService = ociUploadService,
+                        shouldFetch = { true },
+                        shouldUseDetailSessions = { e -> !e.isPeriodEventFromList() }
+                    )
                 }
 
                 // dumpOnly 여부와 상관없이 이미지 업로드는 항상 수행한다.
@@ -148,8 +151,10 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
     )
 }
 
-private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent =
-    CrawledProgramEvent(
+private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
+    val isPeriodEvent = isPeriodEventFromList()
+
+    return CrawledProgramEvent(
         dataSeq = dataSeq,
         majorTypes = majorTypes,
         title = title,
@@ -164,8 +169,14 @@ private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent =
         imageUrl = imageUrl,
         tags = tags,
         mainContentHtml = mainContentHtml,
-        detailSessions = detailSessions.map { it.toCrawledDetailSession() }
+        isPeriodEvent = isPeriodEvent,
+        detailSessions = if (isPeriodEvent) {
+            emptyList()
+        } else {
+            detailSessions.map { it.toCrawledDetailSession() }
+        }
     )
+}
 
 private fun DetailSession.toCrawledDetailSession(): CrawledDetailSession =
     CrawledDetailSession(
