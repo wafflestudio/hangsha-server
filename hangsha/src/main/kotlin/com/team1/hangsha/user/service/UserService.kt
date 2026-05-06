@@ -250,10 +250,10 @@ class UserService(
             )
         }
 
-        if (s.getDisplayLength() > 21) {
+        if (s.getDisplayLength() > 20) {
             throw DomainException(
                 ErrorCode.INVALID_REQUEST,
-                "username은 50자를 초과할 수 없습니다"
+                "username은 한글 10자, 영어 20자를 초과할 수 없습니다"
             )
         }
     }
