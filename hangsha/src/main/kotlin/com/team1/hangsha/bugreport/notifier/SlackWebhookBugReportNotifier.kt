@@ -41,15 +41,12 @@ class SlackWebhookBugReportNotifier(
         return buildString {
             appendLine("[작성자 id]")
             appendLine(report.userId?.toString() ?: "anonymous")
-            appendLine()
 
             appendLine("[작성 시각]")
             appendLine(report.createdAt?.toString() ?: "unknown")
-            appendLine()
 
             appendLine("[타이틀]")
             appendLine(report.title)
-            appendLine()
 
             appendLine("[컨텐츠]")
             append(report.content)
