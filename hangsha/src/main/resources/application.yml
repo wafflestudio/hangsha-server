@@ -69,10 +69,6 @@ jwt:
   access-expiration-ms: 3600000
   refresh-expiration-ms: 1209600000
 
-auth: # default cookie setting
-  refresh-cookie:
-    secure: false
-    same-site: Lax
 
 springdoc:
   swagger-ui:
@@ -106,6 +102,10 @@ app:
   oauth2:
     front-redirect-uri: "http://localhost:3000/auth/callback"
 
+auth: # default cookie setting
+  refresh-cookie:
+    secure: false
+    same-site: Lax
 
 ---
 # ==========================================
@@ -118,6 +118,10 @@ spring:
 app:
   oauth2:
     front-redirect-uri: "https://hangsha-dev.wafflestudio.com/auth/callback"
+auth:
+  refresh-cookie:
+    secure: true
+    domain: ".wafflestudio.com"
 ---
 # ==========================================
 # prod
@@ -129,3 +133,7 @@ spring:
 app:
   oauth2:
     front-redirect-uri: "https://hangsha.wafflestudio.com/auth/callback"
+auth:
+  refresh-cookie:
+    secure: true
+    domain: ".wafflestudio.com"
