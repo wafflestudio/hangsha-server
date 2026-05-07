@@ -10,6 +10,9 @@ data class BugReport(
     @Id
     val id: Long? = null,
 
+    @Column("user_id")
+    val userId: Long? = null,
+
     val title: String,
 
     val content: String,
