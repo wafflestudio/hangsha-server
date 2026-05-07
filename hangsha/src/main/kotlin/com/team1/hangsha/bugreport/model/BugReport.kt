@@ -1,6 +1,7 @@
 package com.team1.hangsha.bugreport.model
 
 import org.springframework.data.annotation.Id
+import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
@@ -17,6 +18,7 @@ data class BugReport(
 
     val content: String,
 
+    @CreatedDate
     @Column("created_at")
     val createdAt: Instant? = null,
 )
