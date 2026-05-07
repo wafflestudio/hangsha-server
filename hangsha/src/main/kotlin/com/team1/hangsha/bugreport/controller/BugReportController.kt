@@ -5,6 +5,7 @@ import com.team1.hangsha.bugreport.dto.CreateBugReportResponse
 import com.team1.hangsha.bugreport.service.BugReportService
 import com.team1.hangsha.user.LoggedInUser
 import com.team1.hangsha.user.model.User
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -25,7 +26,7 @@ class BugReportController(
         description = "로그인 사용자의 버그 리포트를 저장하고, 알림 채널로 전송을 시도합니다. 알림 전송 실패여도 저장은 성공 처리됩니다."
     )
     fun create(
-        @LoggedInUser user: User,
+        @Parameter(hidden = true) @LoggedInUser user: User,
         @Valid @RequestBody req: CreateBugReportRequest,
     ): ResponseEntity<CreateBugReportResponse> {
         val id = bugReportService.create(req, user.id)
