@@ -10,6 +10,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.util.concurrent.TimeUnit
 import com.team1.hangsha.common.upload.OciUploadService
@@ -66,14 +67,11 @@ class ExtraSnuCrawler(
             .filter { !it.title.isNullOrBlank() }
     }
 
-    /**
-     * ✅ 상세 크롤링 (조건부 실행 지원)
-     * - init 모드에서 "모집마감" 스킵 같은 정책을 main에서 람다로 주입 가능
-     */
     fun enrichDetails(
         events: List<ProgramEvent>,
         ociUploadService: OciUploadService,
-        shouldFetch: (ProgramEvent) -> Boolean = { true }
+        shouldFetch: (ProgramEvent) -> Boolean = { true },
+        shouldUseDetailSessions: (ProgramEvent) -> Boolean = { true },
     ): List<ProgramEvent> {
         return events.map { e ->
             val dataSeq = e.dataSeq
@@ -81,19 +79,31 @@ class ExtraSnuCrawler(
             if (!shouldFetch(e)) return@map e
 
             val html1 = fetchDetailPageByPlaywright(dataSeq) ?: return@map e
-            var sessions = parseDetailSessions(html1)
-            var mainHtml = parseMainContentHtml(html1, ociUploadService)
+            var parsed = parseDetailData(
+                html = html1,
+                ociUploadService = ociUploadService,
+                cookieHeader = buildCookieHeader()
+            )
 
-            if (sessions.isEmpty()) { // fallback once
+            val useDetailSessions = shouldUseDetailSessions(e)
+
+            if (useDetailSessions && parsed.sessions.isEmpty()) {
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
-                    sessions = parseDetailSessions(html2)
-                    mainHtml = parseMainContentHtml(html2, ociUploadService)
+                    parsed = parseDetailData(
+                        html = html2,
+                        ociUploadService = ociUploadService,
+                        cookieHeader = buildCookieHeader()
+                    )
                 }
             }
 
             if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
-            e.copy(detailSessions = sessions, mainContentHtml = mainHtml)
+
+            e.copy(
+                mainContentHtml = parsed.mainContentHtml,
+                detailSessions = if (useDetailSessions) parsed.sessions else emptyList()
+            )
         }
     }
 
@@ -329,9 +339,7 @@ class ExtraSnuCrawler(
     // ---------------------------
     // ✅ 상세 페이지 -> DetailSession (start/end/time 평탄화, n회차, 우측 날짜 생략 처리)
     // ---------------------------
-    private fun parseDetailSessions(html: String): List<DetailSession> {
-        val doc = Jsoup.parse(html, baseUrl)
-
+    private fun parseDetailSessions(doc: Document): List<DetailSession> {
         val table = doc.select("table.table.t_view.add_tr")
             .firstOrNull { it.text().normalize().contains("교육(활동)기간") }
             ?: return emptyList()
@@ -381,17 +389,17 @@ class ExtraSnuCrawler(
      * 반환값은 td_box의 innerHTML.
      * 없으면 null.
      */
-    private fun parseMainContentHtml(html: String, ociUploadService: OciUploadService): String? {
-        val doc = Jsoup.parse(html, baseUrl)
-
+    private fun parseMainContentHtml(
+        doc: Document,
+        ociUploadService: OciUploadService,
+        cookieHeader: String,
+    ): String? {
         val box = doc.select("div.cont_box")
             .firstOrNull {
                 it.selectFirst("p.cont_tit")?.text()?.normalize() == "프로그램 주요내용"
             } ?: return null
 
         val tdBox = box.selectFirst("div.td_box") ?: return null
-
-        val cookieHeader = buildCookieHeader()
 
         tdBox.select("img").forEach { img ->
             val rawSrc = img.absUrl("src").ifBlank {
@@ -447,6 +455,17 @@ class ExtraSnuCrawler(
 
         val out = tdBox.html().trim()
         return out.ifBlank { null }
+    }
+
+    private fun parseDetailData(
+        html: String,
+        ociUploadService: OciUploadService,
+        cookieHeader: String,
+    ): ParsedDetailData {
+        val doc = Jsoup.parse(html, baseUrl)
+        val sessions = parseDetailSessions(doc)
+        val mainContentHtml = parseMainContentHtml(doc, ociUploadService, cookieHeader)
+        return ParsedDetailData(sessions = sessions, mainContentHtml = mainContentHtml)
     }
 
     // ---------------------------
@@ -658,5 +677,10 @@ class ExtraSnuCrawler(
         val bytes: ByteArray,
         val contentType: String,
         val extension: String,
+    )
+
+    private data class ParsedDetailData(
+        val sessions: List<DetailSession>,
+        val mainContentHtml: String?,
     )
 }
