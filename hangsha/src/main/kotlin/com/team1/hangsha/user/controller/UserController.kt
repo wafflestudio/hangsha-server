@@ -112,6 +112,10 @@ class UserController(
     }
 
     @DeleteMapping
+    @Operation(
+        summary = "회원 탈퇴",
+        description = "정상 응답 status code는 204(No Content)입니다.\n회원 삭제 시 저장된 리프레시 토큰도 함께 무효화됩니다."
+    )
     fun deleteMe(
         @Parameter(hidden = true) @LoggedInUser user: User,
     ): ResponseEntity<Void> {
