@@ -121,6 +121,7 @@ app:
 auth:
   refresh-cookie:
     secure: true
+    same-site: Lax
     domain: ".wafflestudio.com"
 ---
 # ==========================================
@@ -136,4 +137,5 @@ app:
 auth:
   refresh-cookie:
     secure: true
+    same-site: Lax
     domain: ".wafflestudio.com"
