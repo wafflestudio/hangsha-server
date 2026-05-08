@@ -280,6 +280,13 @@ class UserService(
         return UserDto(user, interests)
     }
 
+    fun deleteMe(userId: Long) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        userRepository.delete(user)
+    }
+
     fun updateProfileImageUrl(userId: Long, profileImageUrl: String) {
         val user = userRepository.findById(userId)
             .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }

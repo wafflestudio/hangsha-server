@@ -13,6 +13,8 @@ import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.user.service.UserService
 import com.team1.hangsha.user.AuthCookieSupport
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -56,7 +58,12 @@ class AuthController(
     }
 
     @PostMapping("/logout")
+    @Operation(
+        summary = "로그아웃",
+        description = "리프레시 토큰을 무효화합니다.\n응답으로 리프레시 토큰 쿠키를 만료 처리합니다."
+    )
     fun logout(
+        @Parameter(hidden = true)
         @CookieValue(name = "refreshToken", required = false) refreshToken: String?
     ): ResponseEntity<Unit> {
         userService.logout(refreshToken)

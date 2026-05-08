@@ -15,11 +15,14 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
+import com.team1.hangsha.user.AuthCookieSupport
+import org.springframework.http.HttpHeaders
 
 @RestController
 @RequestMapping("/api/v1/users/me")
 class UserController(
     private val userService: UserService,
+    private val cookieSupport: AuthCookieSupport,
 ) {
     @GetMapping
     fun getMe(
@@ -106,6 +109,20 @@ class UserController(
     ): ResponseEntity<Void> {
         userService.updateProfile(user.id!!, body)
         return ResponseEntity.noContent().build()
+    }
+
+    @DeleteMapping
+    @Operation(
+        summary = "회원 탈퇴",
+        description = "정상 응답 status code는 204(No Content)입니다.\n회원 삭제 시 저장된 리프레시 토큰도 함께 무효화됩니다."
+    )
+    fun deleteMe(
+        @Parameter(hidden = true) @LoggedInUser user: User,
+    ): ResponseEntity<Void> {
+        userService.deleteMe(user.id!!)
+        return ResponseEntity.noContent()
+            .header(HttpHeaders.SET_COOKIE, cookieSupport.clearRefreshCookie().toString())
+            .build()
     }
 
     @PostMapping("/profile-image", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
