@@ -44,8 +44,10 @@ class BookmarkRepository(
     fun countByUserId(userId: Long): Int {
         val sql = """
             SELECT COUNT(*)
-            FROM bookmarks
-            WHERE user_id = :userId
+            FROM bookmarks b
+            JOIN events e ON e.id = b.event_id
+            WHERE b.user_id = :userId
+              AND e.admin_deleted = false
         """.trimIndent()
 
         return jdbc.queryForObject(sql, mapOf("userId" to userId), Int::class.java) ?: 0
