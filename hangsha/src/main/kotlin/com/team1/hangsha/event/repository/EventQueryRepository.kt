@@ -28,9 +28,19 @@ class EventQueryRepository(
             FROM events e
             WHERE e.admin_deleted = false
               AND (
-                (e.event_start IS NOT NULL AND e.event_start < :toEndExclusive AND COALESCE(e.event_end, e.event_start) >= :fromStart)
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :toEndExclusive
+                  AND COALESCE(e.apply_end, e.apply_start) >= :fromStart
+                )
                 OR
-                (e.apply_start IS NOT NULL AND e.apply_start < :toEndExclusive AND COALESCE(e.apply_end, e.apply_start) >= :fromStart)
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :toEndExclusive
+                  AND COALESCE(e.event_end, e.event_start) >= :fromStart
+                )
               )
             """.trimIndent()
             )
@@ -73,9 +83,19 @@ class EventQueryRepository(
             FROM events e
             WHERE e.admin_deleted = false
               AND (
-                (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :dayEnd
+                  AND COALESCE(e.apply_end, e.apply_start) >= :dayStart
+                )
                 OR
-                (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :dayEnd
+                  AND COALESCE(e.event_end, e.event_start) >= :dayStart
+                )
               )
             """.trimIndent()
             )
@@ -121,9 +141,19 @@ class EventQueryRepository(
             FROM events e
             WHERE e.admin_deleted = false
               AND (
-                (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :dayEnd
+                  AND COALESCE(e.apply_end, e.apply_start) >= :dayStart
+                )
                 OR
-                (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :dayEnd
+                  AND COALESCE(e.event_end, e.event_start) >= :dayStart
+                )
               )
             """.trimIndent()
             )
