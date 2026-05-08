@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
+import com.team1.hangsha.event.dto.request.EventCreateRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.http.HttpStatus
@@ -92,6 +93,11 @@ class EventSyncController(
         val deleted = eventRepository.deleteAllEventsRaw()
         return mapOf("ok" to true, "deleted" to deleted)
     }
+
+    @PostMapping
+    fun createEvent(
+        @RequestBody req: EventCreateRequest,
+    ): Map<String, Any?> = eventSyncService.createEvent(req)
 
     @PatchMapping("/{eventId}")
     fun patchEvent(

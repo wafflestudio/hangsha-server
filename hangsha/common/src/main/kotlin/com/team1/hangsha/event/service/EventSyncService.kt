@@ -8,6 +8,7 @@ import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
+import com.team1.hangsha.event.dto.request.EventCreateRequest
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.model.EventPeriodPolicy
@@ -314,6 +315,67 @@ class EventSyncService(
                 s
             }
         }
+    }
+
+    @Transactional
+    fun createEvent(req: EventCreateRequest): Map<String, Any?> {
+        val title = req.title.trim().takeIf { it.isNotBlank() }
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "title must not be blank"
+            )
+
+        val cleanedTagsJson = req.tags?.let { tags ->
+            val cleaned = tags.asSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
+
+            if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
+        }
+
+        val isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
+            title = title,
+            eventStart = req.eventStart,
+            eventEnd = req.eventEnd,
+        )
+
+        val model = Event(
+            title = title,
+            imageUrl = req.imageUrl?.trim(),
+            operationMode = req.operationMode?.trim(),
+
+            tags = cleanedTagsJson,
+            mainContentHtml = req.mainContentHtml,
+
+            statusId = req.statusId,
+            eventTypeId = req.eventTypeId,
+            orgId = req.orgId,
+
+            applyStart = req.applyStart,
+            applyEnd = req.applyEnd,
+            eventStart = req.eventStart,
+            eventEnd = req.eventEnd,
+
+            isPeriodEvent = isPeriodEvent,
+
+            capacity = req.capacity ?: 0,
+            applyCount = req.applyCount ?: 0,
+
+            organization = req.organization?.trim(),
+            location = req.location?.trim(),
+            applyLink = req.applyLink?.trim(),
+
+            createdAt = Instant.now(),
+        )
+
+        val saved = eventRepository.save(model)
+
+        return mapOf(
+            "ok" to true,
+            "eventId" to saved.id,
+        )
     }
 
     @Transactional
