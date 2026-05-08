@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
-    <file url="file://$PROJECT_DIR$/hangsha/src/main/resources/db/migration/V16__remove_recreation_category.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/hangsha/src/main/resources/db/migration/V17__create_table_bookmarks.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/hangsha/src/main/resources/db/migration/V18__create_table_user_excluded_keywords.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/hangsha/src/main/resources/db/migration/V23__add_is_period_event_to_events.sql" dialect="GenericSQL" />

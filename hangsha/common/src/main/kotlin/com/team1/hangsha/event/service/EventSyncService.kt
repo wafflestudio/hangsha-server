@@ -1,6 +1,9 @@
 package com.team1.hangsha.event.service
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.team1.hangsha.category.model.Category
 import com.team1.hangsha.category.repository.CategoryGroupRepository
 import com.team1.hangsha.category.repository.CategoryRepository
@@ -9,6 +12,7 @@ import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventCreateRequest
+import com.team1.hangsha.event.dto.request.EventOverrideUpdateRequest
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.model.EventPeriodPolicy
@@ -43,6 +47,12 @@ class EventSyncService(
 
         for (e in events) {
             val applyLink = "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=${e.dataSeq}"
+
+            // If we want to skip re-sync of deleted events, uncomment this block
+            //if (eventRepository.existsAdminDeletedByApplyLink(applyLink)) {
+            //    skipped++
+            //    continue
+            //}
 
             val orgName = e.majorTypes.getOrNull(0)?.trim()?.takeIf { it.isNotBlank() }
             val orgId = orgName?.let { getOrCreateCategoryId(orgGroupId, it) }
@@ -115,14 +125,19 @@ class EventSyncService(
                     .toList()
 
                 val title = e.title!!.trim()
-                val isPeriodEvent =
-                    e.isPeriodEvent == true || EventPeriodPolicy.isPeriodEvent(
-                        title = title,
-                        eventStart = eventStart,
-                        eventEnd = eventEnd,
-                    )
+                val crawledIsPeriodEvent = e.isPeriodEvent ?: EventPeriodPolicy.isPeriodEvent(
+                    title = title,
+                    eventStart = eventStart,
+                    eventEnd = eventEnd,
+                )
 
-                val model = Event(
+                val crawledTagsJson = if (cleanedTags.isEmpty()) {
+                    null
+                } else {
+                    objectMapper.writeValueAsString(cleanedTags)
+                }
+
+                val crawledEvent = Event(
                     id = existing?.id,
                     title = title,
                     imageUrl = e.imageUrl?.trim(),
@@ -131,11 +146,16 @@ class EventSyncService(
                     statusId = statusId,
                     eventTypeId = eventTypeId,
                     orgId = orgId,
+
                     applyStart = applyStart,
                     applyEnd = applyEnd,
                     eventStart = eventStart,
                     eventEnd = eventEnd,
-                    isPeriodEvent = isPeriodEvent,
+
+                    isPeriodEvent = crawledIsPeriodEvent,
+
+                    adminOverriddenFields = existing?.adminOverriddenFields,
+                    adminDeleted = false,
 
                     capacity = e.capacity ?: 0,
                     applyCount = e.applyCount ?: 0,
@@ -144,10 +164,15 @@ class EventSyncService(
                     location = location,
                     applyLink = applyLink,
 
-                    tags = if (cleanedTags.isEmpty()) null else objectMapper.writeValueAsString(cleanedTags),
+                    tags = crawledTagsJson,
                     mainContentHtml = e.mainContentHtml,
 
                     createdAt = existing?.createdAt ?: Instant.now(),
+                )
+
+                val model = applyAdminOverrides(
+                    crawled = crawledEvent,
+                    existing = existing,
                 )
 
                 eventRepository.save(model)
@@ -317,6 +342,94 @@ class EventSyncService(
         }
     }
 
+    // @TODO: 하드 코딩이긴 한데, 일단 이렇게 구현.
+    private val nonOverridableEventFields = setOf(
+        "id",
+        "applyLink",
+        "createdAt",
+        "adminOverriddenFields",
+        "adminDeleted",
+        "isPeriodEvent",
+    )
+
+    private fun normalizeOverrideFields(fields: Iterable<String>): Set<String> {
+        return fields
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .filter { it !in nonOverridableEventFields }
+            .toSet()
+    }
+
+    private fun decodeOverrideFields(json: String?): Set<String> {
+        if (json.isNullOrBlank()) return emptySet()
+
+        return runCatching {
+            objectMapper.readValue(json, object : TypeReference<Set<String>>() {})
+        }.getOrDefault(emptySet())
+            .let { normalizeOverrideFields(it) }
+    }
+
+    private fun encodeOverrideFields(fields: Set<String>): String? {
+        val cleaned = normalizeOverrideFields(fields).sorted()
+        return if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
+    }
+
+    private fun overrideFieldsFromPatch(req: EventPatchRequest): Set<String> {
+        val node = objectMapper.valueToTree<ObjectNode>(req)
+
+        return node.fieldNames().asSequence()
+            .filter { fieldName ->
+                val value = node.get(fieldName)
+                value != null && !value.isNull
+            }
+            .let { normalizeOverrideFields(it.asIterable()) }
+    }
+
+    private fun cleanedTagsJson(tags: List<String>?): String? {
+        val cleaned = tags?.asSequence()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            ?.toList()
+            ?: return null
+
+        return if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
+    }
+
+    private fun applyAdminOverrides(
+        crawled: Event,
+        existing: Event?,
+    ): Event {
+        if (existing == null) return crawled
+
+        val overrides = decodeOverrideFields(existing.adminOverriddenFields)
+
+        val crawledNode = objectMapper.valueToTree<ObjectNode>(crawled)
+        val existingNode = objectMapper.valueToTree<ObjectNode>(existing)
+
+        overrides.forEach { fieldName ->
+            val existingValue = existingNode.get(fieldName)
+            if (existingValue != null) {
+                crawledNode.set<JsonNode>(fieldName, existingValue)
+            }
+        }
+
+        val merged = objectMapper.treeToValue(crawledNode, Event::class.java)
+
+        return merged.copy(
+            id = existing.id,
+            createdAt = existing.createdAt,
+            adminOverriddenFields = existing.adminOverriddenFields,
+            adminDeleted = false,
+            isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
+                title = merged.title,
+                eventStart = merged.eventStart,
+                eventEnd = merged.eventEnd,
+            ),
+        )
+    }
+
     @Transactional
     fun createEvent(req: EventCreateRequest): Map<String, Any?> {
         val title = req.title.trim().takeIf { it.isNotBlank() }
@@ -384,15 +497,14 @@ class EventSyncService(
             DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 
-        val cleanedTagsJson = req.tags?.let { tags ->
-            val cleaned = tags.asSequence()
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .toList()
-            if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
+        if (existing.adminDeleted) {
+            throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 
+        val newOverrideFields =
+            decodeOverrideFields(existing.adminOverriddenFields) + overrideFieldsFromPatch(req)
+
+        val cleanedTagsJson = cleanedTagsJson(req.tags)
         val newTitle = req.title?.trim()?.takeIf { it.isNotBlank() } ?: existing.title
         val newEventStart = req.eventStart ?: existing.eventStart
         val newEventEnd = req.eventEnd ?: existing.eventEnd
@@ -420,12 +532,15 @@ class EventSyncService(
                 eventEnd = newEventEnd,
             ),
 
+            adminOverriddenFields = encodeOverrideFields(newOverrideFields),
+            adminDeleted = false,
+
             capacity = req.capacity ?: existing.capacity,
             applyCount = req.applyCount ?: existing.applyCount,
 
             organization = req.organization?.trim() ?: existing.organization,
             location = req.location?.trim() ?: existing.location,
-            applyLink = req.applyLink?.trim() ?: existing.applyLink,
+            applyLink = existing.applyLink, // matching key이므로 수정 X
         )
 
         val saved = eventRepository.save(updated)
@@ -434,10 +549,39 @@ class EventSyncService(
 
     @Transactional
     fun deleteEvent(eventId: Long): Map<String, Any> {
-        if (!eventRepository.existsById(eventId)) {
+        val affected = eventRepository.softDeleteById(eventId)
+
+        if (affected == 0) {
             throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
-        eventRepository.deleteById(eventId)
+
         return mapOf("ok" to true, "deletedEventId" to eventId)
+    }
+
+    @Transactional
+    fun updateOverrides(
+        eventId: Long,
+        req: EventOverrideUpdateRequest,
+    ): Map<String, Any> {
+        val event = eventRepository.findVisibleById(eventId)
+            ?: throw DomainException(ErrorCode.EVENT_NOT_FOUND)
+
+        val current = decodeOverrideFields(event.adminOverriddenFields)
+
+        val next = current +
+                normalizeOverrideFields(req.lockFields) -
+                normalizeOverrideFields(req.unlockFields)
+
+        val updated = event.copy(
+            adminOverriddenFields = encodeOverrideFields(next)
+        )
+
+        eventRepository.save(updated)
+
+        return mapOf(
+            "ok" to true,
+            "eventId" to eventId,
+            "adminOverriddenFields" to next.sorted(),
+        )
     }
 }

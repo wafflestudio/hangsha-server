@@ -32,15 +32,57 @@ interface EventRepository : CrudRepository<Event, Long> {
         """
     UPDATE events
     SET status_id = :closedStatusId
-    WHERE status_id = :recruitingStatusId
+    WHERE admin_deleted = false
+      AND status_id = :recruitingStatusId
       AND apply_end IS NOT NULL
       AND apply_end < :now
+      AND (
+        admin_overridden_fields IS NULL
+        OR JSON_CONTAINS(admin_overridden_fields, JSON_QUOTE('statusId')) = 0
+      )
     """
     )
     fun closeExpiredRecruitingEvents(
         @Param("recruitingStatusId") recruitingStatusId: Long,
         @Param("closedStatusId") closedStatusId: Long,
         @Param("now") now: LocalDateTime,
+    ): Int
+
+    @Query(
+        """
+    select count(*) > 0
+    from events
+    where apply_link = :applyLink
+      and admin_deleted = true
+    """
+    )
+    fun existsAdminDeletedByApplyLink(
+        @Param("applyLink") applyLink: String,
+    ): Boolean
+
+    @Query(
+        """
+    select *
+    from events
+    where id = :eventId
+      and admin_deleted = false
+    limit 1
+    """
+    )
+    fun findVisibleById(
+        @Param("eventId") eventId: Long,
+    ): Event?
+
+    @Modifying
+    @Query(
+        """
+    update events
+    set admin_deleted = true
+    where id = :eventId
+    """
+    )
+    fun softDeleteById(
+        @Param("eventId") eventId: Long,
     ): Int
 
     @Modifying

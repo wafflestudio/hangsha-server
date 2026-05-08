@@ -31,6 +31,9 @@ data class Event(
 
     val isPeriodEvent: Boolean = false,
 
+    val adminOverriddenFields: String? = null,
+    val adminDeleted: Boolean = false,
+
     val capacity: Int? = null,
     val applyCount: Int = 0,
 

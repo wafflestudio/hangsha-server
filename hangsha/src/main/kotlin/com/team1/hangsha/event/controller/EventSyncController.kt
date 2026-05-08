@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.dto.request.EventCreateRequest
+import com.team1.hangsha.event.dto.request.EventOverrideUpdateRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.http.HttpStatus
@@ -109,6 +110,12 @@ class EventSyncController(
     fun deleteEvent(
         @PathVariable eventId: Long,
     ): Map<String, Any> = eventSyncService.deleteEvent(eventId)
+
+    @PatchMapping("/{eventId}/overrides")
+    fun updateOverrides(
+        @PathVariable eventId: Long,
+        @RequestBody req: EventOverrideUpdateRequest,
+    ): Map<String, Any> = eventSyncService.updateOverrides(eventId, req)
 
     companion object {
         private const val SYNC_BATCH_SIZE = 500
