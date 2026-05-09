@@ -26,11 +26,22 @@ class EventQueryRepository(
                 """
             SELECT e.*
             FROM events e
-            WHERE (
-              (e.event_start IS NOT NULL AND e.event_start < :toEndExclusive AND COALESCE(e.event_end, e.event_start) >= :fromStart)
-              OR
-              (e.apply_start IS NOT NULL AND e.apply_start < :toEndExclusive AND COALESCE(e.apply_end, e.apply_start) >= :fromStart)
-            )
+            WHERE e.admin_deleted = false
+              AND (
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :toEndExclusive
+                  AND COALESCE(e.apply_end, e.apply_start) >= :fromStart
+                )
+                OR
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :toEndExclusive
+                  AND COALESCE(e.event_end, e.event_start) >= :fromStart
+                )
+              )
             """.trimIndent()
             )
 
@@ -70,11 +81,22 @@ class EventQueryRepository(
                 """
             SELECT COUNT(*)
             FROM events e
-            WHERE (
-              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
-              OR
-              (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
-            )
+            WHERE e.admin_deleted = false
+              AND (
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :dayEnd
+                  AND COALESCE(e.apply_end, e.apply_start) >= :dayStart
+                )
+                OR
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :dayEnd
+                  AND COALESCE(e.event_end, e.event_start) >= :dayStart
+                )
+              )
             """.trimIndent()
             )
             if (!statusIds.isNullOrEmpty()) append("\n  AND status_id IN (:statusIds)")
@@ -117,11 +139,22 @@ class EventQueryRepository(
                 """
             SELECT e.*
             FROM events e
-            WHERE (
-              (e.event_start IS NOT NULL AND e.event_start < :dayEnd AND COALESCE(e.event_end, e.event_start) >= :dayStart)
-              OR
-              (e.apply_start IS NOT NULL AND e.apply_start < :dayEnd AND COALESCE(e.apply_end, e.apply_start) >= :dayStart)
-            )
+            WHERE e.admin_deleted = false
+              AND (
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :dayEnd
+                  AND COALESCE(e.apply_end, e.apply_start) >= :dayStart
+                )
+                OR
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :dayEnd
+                  AND COALESCE(e.event_end, e.event_start) >= :dayStart
+                )
+              )
             """.trimIndent()
             )
             if (!statusIds.isNullOrEmpty()) append("\n  AND status_id IN (:statusIds)")
@@ -154,7 +187,8 @@ class EventQueryRepository(
                 """
             SELECT COUNT(*)
             FROM events e
-            WHERE e.title LIKE :q
+            WHERE e.admin_deleted = false
+              AND e.title LIKE :q
             """.trimIndent()
             )
 
@@ -174,7 +208,8 @@ class EventQueryRepository(
                 """
             SELECT e.*
             FROM events e
-            WHERE e.title LIKE :q
+            WHERE e.admin_deleted = false
+              AND e.title LIKE :q
             """.trimIndent()
             )
 
@@ -218,7 +253,10 @@ private fun ResultSet.toEvent(): Event {
         applyEnd = getLocalDateTimeOrNull("apply_end"),
         eventStart = getLocalDateTimeOrNull("event_start"),
         eventEnd = getLocalDateTimeOrNull("event_end"),
+
         isPeriodEvent = getBoolean("is_period_event"),
+        adminOverriddenFields = getString("admin_overridden_fields"),
+        adminDeleted = getBoolean("admin_deleted"),
 
         capacity = getInt("capacity").let { if (wasNull()) null else it },
         applyCount = getInt("apply_count"),

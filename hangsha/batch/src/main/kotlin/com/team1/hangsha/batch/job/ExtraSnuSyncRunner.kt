@@ -139,10 +139,15 @@ private data class BatchArgs(
     }
 }
 
+private fun String?.toLocalDateOrNull(): LocalDate? =
+    this?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
 private fun ProgramEvent.isPeriodEventFromList(): Boolean {
     val title = title?.trim().orEmpty()
-    val eventStart = activityStart?.let { LocalDate.parse(it).atStartOfDay() }
-    val eventEnd = activityEnd?.let { LocalDate.parse(it).atTime(23, 59, 59) }
+    val eventStart = activityStart.toLocalDateOrNull()?.atStartOfDay()
+    val eventEnd = activityEnd.toLocalDateOrNull()?.atTime(23, 59, 59)
 
     return EventPeriodPolicy.isPeriodEvent(
         title = title,
