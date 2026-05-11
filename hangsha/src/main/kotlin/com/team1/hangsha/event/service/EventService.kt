@@ -81,8 +81,11 @@ class EventService(
         }
 
         for (e in events) {
-            addRangeToBuckets(e, e.eventStart, e.eventEnd)
-            addRangeToBuckets(e, e.applyStart, e.applyEnd)
+            if (e.isPeriodEvent) {
+                addRangeToBuckets(e, e.applyStart, e.applyEnd)
+            } else {
+                addRangeToBuckets(e, e.eventStart, e.eventEnd)
+            }
         }
 
         val auth = userId != null
