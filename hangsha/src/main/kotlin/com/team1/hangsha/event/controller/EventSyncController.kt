@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.multipart.MultipartFile
 
 @RestController
-@RequestMapping("/admin/events")
+@RequestMapping("/api/v1/admin/events")
 class EventSyncController(
     private val eventSyncService: EventSyncService,
     private val eventRepository: EventRepository,

@@ -75,7 +75,7 @@ class SecurityConfig(
                         "/oauth2/authorization/**",
                         "/login/oauth2/code/**",
                     ).permitAll()
-                    .requestMatchers("/admin/**").hasRole("ADMIN")
+                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
