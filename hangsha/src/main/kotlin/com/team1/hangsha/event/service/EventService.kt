@@ -60,11 +60,8 @@ class EventService(
             }
         }
 
-        fun effectiveStart(e: Event): LocalDateTime =
-            listOfNotNull(e.applyStart, e.eventStart).minOrNull() ?: fromStart
-
-        fun effectiveEnd(e: Event): LocalDateTime =
-            listOfNotNull(e.applyEnd, e.eventEnd).maxOrNull() ?: effectiveStart(e)
+        fun sortStart(e: Event): LocalDateTime =
+            e.eventStart ?: e.applyStart ?: fromStart
 
         fun addRangeToBuckets(event: Event, start: LocalDateTime?, end: LocalDateTime?) {
             val rangeStart = start ?: return
@@ -84,8 +81,11 @@ class EventService(
         }
 
         for (e in events) {
-            addRangeToBuckets(e, e.eventStart, e.eventEnd)
-            addRangeToBuckets(e, e.applyStart, e.applyEnd)
+            if (e.isPeriodEvent) {
+                addRangeToBuckets(e, e.applyStart, e.applyEnd)
+            } else {
+                addRangeToBuckets(e, e.eventStart, e.eventEnd)
+            }
         }
 
         val auth = userId != null
@@ -100,7 +100,9 @@ class EventService(
             .toSortedMap()
             .mapValues { (_, dayEvents) ->
                 val sorted = dayEvents.sortedWith(
-                    compareBy<Event> { effectiveStart(it) }.thenBy { it.id ?: Long.MAX_VALUE }
+                    compareBy<Event> { it.matchedInterestPriority(interestPriorityByCategoryId) ?: Int.MAX_VALUE }
+                        .thenBy { sortStart(it) }
+                        .thenBy { it.id ?: Long.MAX_VALUE }
                 )
                 MonthEventResponse.DayBucket(
                     events = sorted.map { e ->
@@ -119,9 +121,8 @@ class EventService(
     }
 
     fun getEventDetail(eventId: Long, userId: Long?): DetailEventResponse {
-        val event = eventRepository.findById(eventId).orElseThrow {
-            DomainException(ErrorCode.EVENT_NOT_FOUND)
-        }
+        val event = eventRepository.findVisibleById(eventId)
+            ?: throw DomainException(ErrorCode.EVENT_NOT_FOUND)
 
         val interestPriorityByCategoryId = loadInterestMap(userId)
         val matchedPriority = event.matchedInterestPriority(interestPriorityByCategoryId)

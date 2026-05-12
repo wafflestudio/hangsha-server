@@ -44,8 +44,10 @@ class BookmarkRepository(
     fun countByUserId(userId: Long): Int {
         val sql = """
             SELECT COUNT(*)
-            FROM bookmarks
-            WHERE user_id = :userId
+            FROM bookmarks b
+            JOIN events e ON e.id = b.event_id
+            WHERE b.user_id = :userId
+              AND e.admin_deleted = false
         """.trimIndent()
 
         return jdbc.queryForObject(sql, mapOf("userId" to userId), Int::class.java) ?: 0
@@ -57,6 +59,7 @@ class BookmarkRepository(
             FROM bookmarks b
             JOIN events e ON e.id = b.event_id
             WHERE b.user_id = :userId
+              AND e.admin_deleted = false
             ORDER BY b.created_at DESC, b.id DESC
             LIMIT :limit OFFSET :offset
         """.trimIndent()
@@ -115,6 +118,8 @@ private fun ResultSet.toEvent(): Event {
         eventEnd = getLocalDateTimeOrNull("event_end"),
 
         isPeriodEvent = getBoolean("is_period_event"),
+        adminOverriddenFields = getString("admin_overridden_fields"),
+        adminDeleted = getBoolean("admin_deleted"),
 
         capacity = getInt("capacity").let { if (wasNull()) null else it },
         applyCount = getInt("apply_count"),

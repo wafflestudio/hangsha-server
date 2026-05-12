@@ -67,14 +67,11 @@ class ExtraSnuCrawler(
             .filter { !it.title.isNullOrBlank() }
     }
 
-    /**
-     * ✅ 상세 크롤링 (조건부 실행 지원)
-     * - init 모드에서 "모집마감" 스킵 같은 정책을 main에서 람다로 주입 가능
-     */
     fun enrichDetails(
         events: List<ProgramEvent>,
         ociUploadService: OciUploadService,
-        shouldFetch: (ProgramEvent) -> Boolean = { true }
+        shouldFetch: (ProgramEvent) -> Boolean = { true },
+        shouldUseDetailSessions: (ProgramEvent) -> Boolean = { true },
     ): List<ProgramEvent> {
         return events.map { e ->
             val dataSeq = e.dataSeq
@@ -88,7 +85,9 @@ class ExtraSnuCrawler(
                 cookieHeader = buildCookieHeader()
             )
 
-            if (parsed.sessions.isEmpty()) { // fallback once
+            val useDetailSessions = shouldUseDetailSessions(e)
+
+            if (useDetailSessions && parsed.sessions.isEmpty()) {
                 val html2 = fetchDetailPageByPlaywright(dataSeq)
                 if (html2 != null) {
                     parsed = parseDetailData(
@@ -100,7 +99,11 @@ class ExtraSnuCrawler(
             }
 
             if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
-            e.copy(detailSessions = parsed.sessions, mainContentHtml = parsed.mainContentHtml)
+
+            e.copy(
+                mainContentHtml = parsed.mainContentHtml,
+                detailSessions = if (useDetailSessions) parsed.sessions else emptyList()
+            )
         }
     }
 

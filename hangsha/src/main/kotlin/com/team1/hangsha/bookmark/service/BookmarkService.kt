@@ -19,7 +19,7 @@ class BookmarkService(
 
     @Transactional
     fun addBookmark(userId: Long, eventId: Long) {
-        if (!eventRepository.existsById(eventId)) {
+        if (eventRepository.findVisibleById(eventId) == null) {
             throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 
@@ -28,7 +28,7 @@ class BookmarkService(
 
     @Transactional
     fun removeBookmark(userId: Long, eventId: Long) {
-        if (!eventRepository.existsById(eventId)) {
+        if (eventRepository.findVisibleById(eventId) == null) {
             throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.dto.request.EventPatchRequest
+import com.team1.hangsha.event.dto.request.EventCreateRequest
+import com.team1.hangsha.event.dto.request.EventOverrideUpdateRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.http.HttpStatus
@@ -19,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.multipart.MultipartFile
 
 @RestController
-@RequestMapping("/admin/events")
+@RequestMapping("/api/v1/admin/events")
 class EventSyncController(
     private val eventSyncService: EventSyncService,
     private val eventRepository: EventRepository,
@@ -93,6 +95,11 @@ class EventSyncController(
         return mapOf("ok" to true, "deleted" to deleted)
     }
 
+    @PostMapping
+    fun createEvent(
+        @RequestBody req: EventCreateRequest,
+    ): Map<String, Any?> = eventSyncService.createEvent(req)
+
     @PatchMapping("/{eventId}")
     fun patchEvent(
         @PathVariable eventId: Long,
@@ -103,6 +110,12 @@ class EventSyncController(
     fun deleteEvent(
         @PathVariable eventId: Long,
     ): Map<String, Any> = eventSyncService.deleteEvent(eventId)
+
+    @PatchMapping("/{eventId}/overrides")
+    fun updateOverrides(
+        @PathVariable eventId: Long,
+        @RequestBody req: EventOverrideUpdateRequest,
+    ): Map<String, Any> = eventSyncService.updateOverrides(eventId, req)
 
     companion object {
         private const val SYNC_BATCH_SIZE = 500

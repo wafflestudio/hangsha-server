@@ -99,8 +99,10 @@ class UserService(
         if (!BCrypt.checkpw(password, hashed)) throw DomainException(ErrorCode.AUTH_INVALID_CREDENTIALS)
 
         val userId = identity.userId
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
 
-        val access = jwtTokenProvider.createAccessToken(userId)
+        val access = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val refresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, refresh)
@@ -115,7 +117,10 @@ class UserService(
 
     @Transactional
     fun issueAfterSocialLogin(userId: Long): IssuedTokens {
-        val access = jwtTokenProvider.createAccessToken(userId)
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        val access = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val refresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, refresh)
@@ -130,28 +135,50 @@ class UserService(
 
     @Transactional
     fun rotateAndIssueAccessToken(refreshToken: String): IssuedTokens {
+        println("=== 🔍 REFRESH TOKEN DEBUG START ===")
         if (!jwtTokenProvider.validateRefreshToken(refreshToken)) {
+            println("🚨 1번 검문소 실패: 토큰 자체가 유효하지 않음 (형식 에러)")
             throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
         }
 
         val userId = jwtTokenProvider.getUserId(refreshToken)
         val jti = jwtTokenProvider.getJti(refreshToken)
+        println("✅ JTI 추출 완료: $jti")
 
         val row = refreshTokenRepository.findByJti(jti)
-            ?: throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        if (row == null) {
+            println("🚨 2번 검문소 실패: DB/Redis에서 JTI로 데이터를 찾을 수 없음!")
+            throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        }
 
-        if (row.userId != userId) throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
-        if (row.revokedAt != null) throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
-        if (row.expiresAt.isBefore(Instant.now())) throw DomainException(ErrorCode.AUTH_TOKEN_EXPIRED)
-        if (!tokenHasher.matches(refreshToken, row.tokenHash)) throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        if (row.userId != userId) {
+            println("🚨 3번 검문소 실패: 유저 ID 불일치")
+            throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        }
+        if (row.revokedAt != null) {
+            println("🚨 4번 검문소 실패: 이미 폐기된 토큰 (누군가 이미 사용함)")
+            throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        }
+        if (row.expiresAt.isBefore(Instant.now())) {
+            println("🚨 5번 검문소 실패: 토큰 유효기간 만료")
+            throw DomainException(ErrorCode.AUTH_TOKEN_EXPIRED)
+        }
+        if (!tokenHasher.matches(refreshToken, row.tokenHash)) {
+            println("🚨 6번 검문소 실패: 토큰 해시(Hash) 값 불일치")
+                throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
+        }
 
+        println("=== 🎉 모든 검문소 무사 통과! ===")
         // rotation: 기존 refresh revoke
         val updated = refreshTokenRepository.revokeIfNotRevoked(jti)
         if (updated != 1) {
             throw DomainException(ErrorCode.AUTH_INVALID_TOKEN)
         }
 
-        val newAccess = jwtTokenProvider.createAccessToken(userId)
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        val newAccess = jwtTokenProvider.createAccessToken(userId, user.isAdmin)
         val newRefresh = jwtTokenProvider.createRefreshToken(userId)
 
         saveRefresh(userId, newRefresh)
@@ -242,10 +269,10 @@ class UserService(
             )
         }
 
-        if (s.getDisplayLength() > 21) {
+        if (s.getDisplayLength() > 20) {
             throw DomainException(
                 ErrorCode.INVALID_REQUEST,
-                "username은 50자를 초과할 수 없습니다"
+                "username은 한글 10자, 영어 20자를 초과할 수 없습니다"
             )
         }
     }
@@ -270,6 +297,13 @@ class UserService(
         val interests = userPreferenceService.listInterestCategory(userId)
 
         return UserDto(user, interests)
+    }
+
+    fun deleteMe(userId: Long) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        userRepository.delete(user)
     }
 
     fun updateProfileImageUrl(userId: Long, profileImageUrl: String) {
