@@ -23,12 +23,13 @@ class WebConfig(
 
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/**") // 모든 경로에 대해
-            .allowedOrigins(
+            .allowedOriginPatterns(
                 "http://localhost:3000",                  // 로컬 프론트엔드
                 "http://localhost:5173",                  // 로컬 프론트엔드 (Vite)
                 "http://localhost:5174",                  // 로컬 프론트엔드 (Vite 대체 포트)
                 "https://hangsha-dev.wafflestudio.com",   // Dev 프론트엔드
-                "https://hangsha.wafflestudio.com"        // Prod 프론트엔드
+                "https://hangsha.wafflestudio.com",       // Prod 프론트엔드
+                "https://*.app.github.dev"                // GitHub Codespaces 포워딩 도메인
             )
             .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
             .allowedHeaders("*")
