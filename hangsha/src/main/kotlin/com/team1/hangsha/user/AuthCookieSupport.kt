@@ -10,22 +10,36 @@ class AuthCookieSupport(
     private val secure: Boolean,
     @Value("\${auth.refresh-cookie.same-site}")
     private val sameSite: String,
+    @Value("\${auth.refresh-cookie.domain:}")
+    private val domain: String,
 ) {
-    fun buildRefreshCookie(token: String, maxAgeSeconds: Long): ResponseCookie =
-        ResponseCookie.from("refreshToken", token)
+    fun buildRefreshCookie(token: String, maxAgeSeconds: Long): ResponseCookie {
+        val builder = ResponseCookie.from("refreshToken", token)
             .httpOnly(true)
             .secure(secure)
             .sameSite(sameSite)
             .path("/api/v1/auth")
             .maxAge(maxAgeSeconds)
-            .build()
 
-    fun clearRefreshCookie(): ResponseCookie =
-        ResponseCookie.from("refreshToken", "")
+        if (domain.isNotBlank()) {
+            builder.domain(domain)
+        }
+
+        return builder.build()
+    }
+
+    fun clearRefreshCookie(): ResponseCookie {
+        val builder = ResponseCookie.from("refreshToken", "")
             .httpOnly(true)
             .secure(secure)
             .sameSite(sameSite)
             .path("/api/v1/auth")
             .maxAge(0)
-            .build()
+
+        if (domain.isNotBlank()) {
+            builder.domain(domain)
+        }
+
+        return builder.build()
+    }
 }
