@@ -103,7 +103,6 @@ class AuthService(
     }
 
     private fun getKakaoProfile(code: String): SocialUserProfile {
-        println(">>> DEBUG: ID=$kakaoClientId, SECRET=$kakaoClientSecret")
         val tokenUrl = "https://kauth.kakao.com/oauth/token"
 
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_FORM_URLENCODED }
