@@ -179,6 +179,36 @@ class AuthIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `session endpoint issues refresh cookie with valid access token`() {
+        val email = "test_${UUID.randomUUID()}@example.com"
+        val password = "Abcd1234!"
+
+        val (accessToken, _) = postRegister(email, password)
+
+        val res = mockMvc.post("/api/v1/auth/session") {
+            secure = true
+            header(HttpHeaders.AUTHORIZATION, bearer(accessToken))
+        }.andExpect {
+            status { isNoContent() }
+            header { exists(HttpHeaders.SET_COOKIE) }
+        }.andReturn()
+
+        val setCookie = res.response.getHeader(HttpHeaders.SET_COOKIE)
+            ?: fail("Expected Set-Cookie for refreshToken, but it was null")
+
+        assertTrue(setCookie.startsWith("refreshToken="), "Set-Cookie must include refreshToken")
+    }
+
+    @Test
+    fun `session endpoint fails without access token`() {
+        mockMvc.post("/api/v1/auth/session") {
+            secure = true
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+    }
+
+    @Test
     fun `logout clears refresh cookie`() {
         val email = "test_${UUID.randomUUID()}@example.com"
         val password = "Abcd1234!"

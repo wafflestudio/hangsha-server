@@ -13,6 +13,8 @@ import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.user.service.UserService
 import com.team1.hangsha.user.AuthCookieSupport
+import com.team1.hangsha.user.LoggedInUser
+import com.team1.hangsha.user.model.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpHeaders
@@ -55,6 +57,19 @@ class AuthController(
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, issued.refreshCookie.toString())
             .body(RefreshResponse(accessToken = issued.accessToken))
+    }
+
+    @PostMapping("/session")
+    fun establishSession(
+        @Parameter(hidden = true)
+        @LoggedInUser user: User?
+    ): ResponseEntity<Unit> {
+        val authenticatedUser = user ?: throw DomainException(ErrorCode.AUTH_UNAUTHORIZED)
+        val issued = userService.issueAfterSocialLogin(authenticatedUser.id!!)
+
+        return ResponseEntity.noContent()
+            .header(HttpHeaders.SET_COOKIE, issued.refreshCookie.toString())
+            .build()
     }
 
     @PostMapping("/logout")
