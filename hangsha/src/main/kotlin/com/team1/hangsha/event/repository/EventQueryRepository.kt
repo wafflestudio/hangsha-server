@@ -20,6 +20,7 @@ class EventQueryRepository(
         eventTypeIds: List<Long>?,
         orgIds: List<Long>?,
         userId: Long?,
+        applyExcludedKeywords: Boolean = true,
     ): List<Event> {
         val sql = buildString {
             append(
@@ -49,7 +50,9 @@ class EventQueryRepository(
             if (!eventTypeIds.isNullOrEmpty()) append("\n  AND event_type_id IN (:eventTypeIds)")
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
-            appendExcludedKeywordsFilter(userId)
+            if (applyExcludedKeywords) {
+                appendExcludedKeywordsFilter(userId)
+            }
 
             appendEventOrderBy(userId)
         }
@@ -66,12 +69,66 @@ class EventQueryRepository(
         return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
     }
 
+    fun countInRange(
+        fromStart: LocalDateTime,
+        toEndExclusive: LocalDateTime,
+        statusIds: List<Long>?,
+        eventTypeIds: List<Long>?,
+        orgIds: List<Long>?,
+        userId: Long?,
+        applyExcludedKeywords: Boolean = true,
+    ): Int {
+        val sql = buildString {
+            append(
+                """
+            SELECT COUNT(*)
+            FROM events e
+            WHERE e.admin_deleted = false
+              AND (
+                (
+                  e.is_period_event = true
+                  AND e.apply_start IS NOT NULL
+                  AND e.apply_start < :toEndExclusive
+                  AND COALESCE(e.apply_end, e.apply_start) >= :fromStart
+                )
+                OR
+                (
+                  e.is_period_event = false
+                  AND e.event_start IS NOT NULL
+                  AND e.event_start < :toEndExclusive
+                  AND COALESCE(e.event_end, e.event_start) >= :fromStart
+                )
+              )
+            """.trimIndent()
+            )
+
+            if (!statusIds.isNullOrEmpty()) append("\n  AND status_id IN (:statusIds)")
+            if (!eventTypeIds.isNullOrEmpty()) append("\n  AND event_type_id IN (:eventTypeIds)")
+            if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
+            if (applyExcludedKeywords) {
+                appendExcludedKeywordsFilter(userId)
+            }
+        }
+
+        val params = mutableMapOf<String, Any>(
+            "fromStart" to Timestamp.valueOf(fromStart),
+            "toEndExclusive" to Timestamp.valueOf(toEndExclusive),
+        )
+        if (!statusIds.isNullOrEmpty()) params["statusIds"] = statusIds
+        if (!eventTypeIds.isNullOrEmpty()) params["eventTypeIds"] = eventTypeIds
+        if (!orgIds.isNullOrEmpty()) params["orgIds"] = orgIds
+        if (userId != null) params["userId"] = userId
+
+        return jdbc.queryForObject(sql, params, Int::class.java) ?: 0
+    }
+
     fun countOnDay(
         date: LocalDate,
         statusIds: List<Long>?,
         eventTypeIds: List<Long>?,
         orgIds: List<Long>?,
         userId: Long?,
+        applyExcludedKeywords: Boolean = true,
     ): Int {
         val dayStart = date.atStartOfDay()
         val dayEndExclusive = date.plusDays(1).atStartOfDay()
@@ -103,7 +160,9 @@ class EventQueryRepository(
             if (!eventTypeIds.isNullOrEmpty()) append("\n  AND event_type_id IN (:eventTypeIds)")
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
-            appendExcludedKeywordsFilter(userId)
+            if (applyExcludedKeywords) {
+                appendExcludedKeywordsFilter(userId)
+            }
         }
 
         val params = mutableMapOf<String, Any>(
@@ -126,6 +185,7 @@ class EventQueryRepository(
         page: Int,
         size: Int,
         userId: Long?,
+        applyExcludedKeywords: Boolean = true,
     ): List<Event> {
         val safePage = max(1, page)
         val safeSize = max(1, size)
@@ -161,7 +221,9 @@ class EventQueryRepository(
             if (!eventTypeIds.isNullOrEmpty()) append("\n  AND event_type_id IN (:eventTypeIds)")
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
-            appendExcludedKeywordsFilter(userId)
+            if (applyExcludedKeywords) {
+                appendExcludedKeywordsFilter(userId)
+            }
 
             appendEventOrderBy(userId)
             append("\nLIMIT :limit OFFSET :offset")
