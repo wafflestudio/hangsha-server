@@ -6,6 +6,7 @@ import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.EventDto
 import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
+import com.team1.hangsha.event.dto.response.EventCountResponse
 import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.model.Event
@@ -32,6 +33,7 @@ class EventService(
         eventTypeIds: List<Long>?,
         orgIds: List<Long>?,
         userId: Long?,
+        applyExcludedKeywords: Boolean = true,
     ): MonthEventResponse {
         if (from.isAfter(to)) {
             throw DomainException(ErrorCode.INVALID_REQUEST, "from은 to보다 이후일 수 없습니다")
@@ -47,6 +49,7 @@ class EventService(
             eventTypeIds = eventTypeIds,
             orgIds = orgIds,
             userId = userId,
+            applyExcludedKeywords = applyExcludedKeywords,
         )
 
         val interestPriorityByCategoryId = loadInterestMap(userId)
@@ -120,6 +123,32 @@ class EventService(
         )
     }
 
+
+    fun countEvents(
+        from: LocalDate,
+        to: LocalDate,
+        statusIds: List<Long>?,
+        eventTypeIds: List<Long>?,
+        orgIds: List<Long>?,
+        userId: Long?,
+        applyExcludedKeywords: Boolean = true,
+    ): EventCountResponse {
+        if (from.isAfter(to)) {
+            throw DomainException(ErrorCode.INVALID_REQUEST, "from은 to보다 이후일 수 없습니다")
+        }
+
+        val count = eventQueryRepository.countInRange(
+            fromStart = from.atStartOfDay(),
+            toEndExclusive = to.plusDays(1).atStartOfDay(),
+            statusIds = statusIds,
+            eventTypeIds = eventTypeIds,
+            orgIds = orgIds,
+            userId = userId,
+            applyExcludedKeywords = applyExcludedKeywords,
+        )
+        return EventCountResponse(count = count)
+    }
+
     fun getEventDetail(eventId: Long, userId: Long?): DetailEventResponse {
         val event = eventRepository.findVisibleById(eventId)
             ?: throw DomainException(ErrorCode.EVENT_NOT_FOUND)
@@ -139,9 +168,14 @@ class EventService(
         eventTypeIds: List<Long>?,
         orgIds: List<Long>?,
         userId: Long?,
+        applyExcludedKeywords: Boolean = true,
     ): DayEventResponse {
-        val total = eventQueryRepository.countOnDay(date, statusIds, eventTypeIds, orgIds, userId)
-        val events = eventQueryRepository.findOnDayPaged(date, statusIds, eventTypeIds, orgIds, page, size, userId)
+        val total = eventQueryRepository.countOnDay(
+            date, statusIds, eventTypeIds, orgIds, userId, applyExcludedKeywords
+        )
+        val events = eventQueryRepository.findOnDayPaged(
+            date, statusIds, eventTypeIds, orgIds, page, size, userId, applyExcludedKeywords
+        )
 
         val interestPriorityByCategoryId = loadInterestMap(userId)
         val auth = userId != null
