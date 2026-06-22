@@ -102,6 +102,12 @@ app:
   oauth2:
     front-redirect-uri: "http://localhost:3000/auth/callback"
 
+manticore:
+  base-url: http://localhost:19308
+
+kiwi:
+  base-url: http://localhost:8090
+
 auth: # default cookie setting
   refresh-cookie:
     secure: false
