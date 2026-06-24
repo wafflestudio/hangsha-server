@@ -204,6 +204,8 @@ class EventService(
 
     fun searchTitle(
         query: String,
+        page: Int,
+        size: Int,
         userId: Long?,
     ): TitleSearchEventResponse {
         val q = query.trim()
@@ -211,7 +213,7 @@ class EventService(
 
         val result = manticoreSearchService.searchByTitle(q)
         // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, userId)
+        return buildSearchResponse(result, page, size, userId)
     }
 
     fun searchContent(
@@ -223,16 +225,22 @@ class EventService(
 
         val result = manticoreSearchService.searchByContent(q)
         // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, userId)
+        return buildSearchResponse(result, page = 1, size = Int.MAX_VALUE, userId)
     }
 
     private fun buildSearchResponse(
         result: ManticoreSearchService.SearchResult,
+        page: Int,
+        size: Int,
         userId: Long?,
     ): TitleSearchEventResponse {
-        // Manticore score 순 → 최신순 정렬은 findVisibleByIds 내부 ORDER BY로 처리
-        // TODO: 나중에 score 기반 정렬 vs 최신순 정렬 전략 선택 필요
-        val events = eventQueryRepository.findVisibleByIds(result.eventIds)
+        val safePage = max(1, page)
+        val safeSize = max(1, size)
+        val offset = (safePage - 1) * safeSize
+
+        // Manticore score 순으로 정렬된 ID 리스트를 page/size로 슬라이싱한 뒤 MySQL 조회
+        val pageIds = result.eventIds.drop(offset).take(safeSize)
+        val events = eventQueryRepository.findVisibleByIds(pageIds)
 
         val auth = userId != null
         val interestPriorityByCategoryId = loadInterestMap(userId)
@@ -248,8 +256,8 @@ class EventService(
         }
 
         return TitleSearchEventResponse(
-            page = 1,
-            size = items.size,
+            page = safePage,
+            size = safeSize,
             total = result.total,
             items = items,
         )
