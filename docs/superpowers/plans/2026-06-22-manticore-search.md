@@ -997,70 +997,51 @@ git commit -m "feat: replace SQL title search with Manticore and add content sea
 
 ### Task 10: 배치 보상 프로세스 엔드포인트 (전체 재인덱싱)
 
+> **설계 결정**: 별도 ManticoreReindexService 없이 `ManticoreIndexService.reindexAll()`에 직접 구현.
+
 **Files:**
-- Create: `src/main/kotlin/com/team1/hangsha/search/ManticoreReindexService.kt`
+- Modify: `common/src/main/kotlin/com/team1/hangsha/search/ManticoreIndexService.kt` — `reindexAll()` 추가
 - Create: `src/main/kotlin/com/team1/hangsha/search/SearchAdminController.kt`
 
 **Interfaces:**
 - Consumes: `EventRepository.findAll()`, `ManticoreIndexService.indexEvent()`
-- Produces: `POST /api/v1/admin/search/reindex` → `{"ok": true, "indexed": N}`
+- Produces: `POST /api/v1/admin/search/reindex` → `{"ok": true, "indexed": N, "failed": N}`
 
-- [ ] **Step 1: ManticoreReindexService 작성**
+- [x] **Step 1: ManticoreIndexService에 reindexAll() 추가**
 
-`src/main/kotlin/com/team1/hangsha/search/ManticoreReindexService.kt`:
+`common/src/main/kotlin/com/team1/hangsha/search/ManticoreIndexService.kt`에
+`EventRepository`, `@Value("\${manticore.base-url}")`, `RestClient` 주입 후:
 ```kotlin
-package com.team1.hangsha.search
+fun reindexAll(): Map<String, Any> {
+    val sql = "TRUNCATE TABLE $indexName"
+    val encoded = URLEncoder.encode(sql, StandardCharsets.UTF_8)
+    restClient.post()
+        .uri("/sql?mode=raw")
+        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body("query=$encoded")
+        .retrieve()
+        .toBodilessEntity()
+    log.info("Truncated $indexName for full reindex")
 
-import com.team1.hangsha.event.repository.EventRepository
-import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.MediaType
-import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
+    var indexed = 0
+    var failed = 0
+    eventRepository.findAll()
+        .filter { !it.adminDeleted }
+        .forEach { event ->
+            runCatching { indexEvent(event) }
+                .onSuccess { indexed++ }
+                .onFailure { e ->
+                    failed++
+                    log.error("Failed to index eventId={}: {}", event.id, e.message)
+                }
+        }
 
-@Service
-class ManticoreReindexService(
-    @Value("\${manticore.base-url}") private val baseUrl: String,
-    private val eventRepository: EventRepository,
-    private val manticoreIndexService: ManticoreIndexService,
-) {
-    private val log = LoggerFactory.getLogger(javaClass)
-    private val client by lazy { RestClient.create(baseUrl) }
-
-    fun reindexAll(): Map<String, Any> {
-        // sql()은 ManticoreClient에 없으므로 직접 HTTP 호출
-        val sql = "TRUNCATE TABLE events_search"
-        val encoded = URLEncoder.encode(sql, StandardCharsets.UTF_8)
-        client.post()
-            .uri("/sql?mode=raw")
-            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-            .body("query=$encoded")
-            .retrieve()
-            .toBodilessEntity()
-        log.info("Truncated events_search table for full reindex")
-
-        var indexed = 0
-        var failed = 0
-        eventRepository.findAll()
-            .filter { !it.adminDeleted }
-            .forEach { event ->
-                runCatching { manticoreIndexService.indexEvent(event) }
-                    .onSuccess { indexed++ }
-                    .onFailure { e ->
-                        failed++
-                        log.error("Failed to index eventId={}: {}", event.id, e.message)
-                    }
-            }
-
-        log.info("Reindex complete: indexed={}, failed={}", indexed, failed)
-        return mapOf("ok" to true, "indexed" to indexed, "failed" to failed)
-    }
+    log.info("Reindex complete: indexed={}, failed={}", indexed, failed)
+    return mapOf("ok" to true, "indexed" to indexed, "failed" to failed)
 }
 ```
 
-- [ ] **Step 2: SearchAdminController 작성**
+- [x] **Step 2: SearchAdminController 작성**
 
 `src/main/kotlin/com/team1/hangsha/search/SearchAdminController.kt`:
 ```kotlin
@@ -1073,10 +1054,10 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/v1/admin/search")
 class SearchAdminController(
-    private val manticoreReindexService: ManticoreReindexService,
+    private val manticoreIndexService: ManticoreIndexService,
 ) {
     @PostMapping("/reindex")
-    fun reindex(): Map<String, Any> = manticoreReindexService.reindexAll()
+    fun reindex(): Map<String, Any> = manticoreIndexService.reindexAll()
 }
 ```
 
@@ -1084,8 +1065,7 @@ class SearchAdminController(
 
 Run:
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/admin/search/reindex \
-  -H "Authorization: Bearer <admin-token>"
+curl -s -X POST http://localhost:8080/api/v1/admin/search/reindex
 ```
 Expected:
 ```json
@@ -1102,16 +1082,16 @@ Expected: Manticore 검색 결과 반환
 
 Run:
 ```bash
-./gradlew :build
+./gradlew :hangsha:build
 ```
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/main/kotlin/com/team1/hangsha/search/ManticoreReindexService.kt \
+git add common/src/main/kotlin/com/team1/hangsha/search/ManticoreIndexService.kt \
         src/main/kotlin/com/team1/hangsha/search/SearchAdminController.kt
-git commit -m "feat: add /admin/search/reindex compensation endpoint"
+git commit -m "feat: add reindexAll() to ManticoreIndexService and /admin/search/reindex endpoint"
 ```
 
 ---
