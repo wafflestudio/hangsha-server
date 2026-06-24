@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>검색 테스트</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }
+    h2 { margin-top: 32px; }
+    .row { display: flex; gap: 8px; margin-bottom: 16px; }
+    input { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 8px 16px; cursor: pointer; border-radius: 4px; border: none; background: #3b82f6; color: #fff; font-size: 14px; }
+    button:hover { background: #2563eb; }
+    .meta { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .card .title { font-weight: bold; margin-bottom: 4px; cursor: pointer; color: #1d4ed8; }
+    .card .title:hover { text-decoration: underline; }
+    .card .info { font-size: 12px; color: #666; margin-bottom: 6px; }
+    .card .body-content { margin-top: 10px; border-top: 1px solid #f0f0f0; padding-top: 10px; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto; }
+    .card .body-content img { max-width: 100%; height: auto; }
+    .card .toggle-btn { font-size: 12px; padding: 3px 8px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .card .toggle-btn:hover { background: #e5e7eb; }
+    .empty { color: #999; font-size: 14px; }
+    .error { color: #ef4444; font-size: 13px; }
+    #title-results, #content-results { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>검색 테스트</h1>
+
+  <h2>타이틀 검색</h2>
+  <div class="row">
+    <input id="title-query" placeholder="검색어 입력" />
+    <button onclick="search('title')">검색</button>
+  </div>
+  <div id="title-meta" class="meta"></div>
+  <div id="title-results"></div>
+
+  <h2>본문 검색</h2>
+  <div class="row">
+    <input id="content-query" placeholder="검색어 입력" />
+    <button onclick="search('content')">검색</button>
+  </div>
+  <div id="content-meta" class="meta"></div>
+  <div id="content-results"></div>
+
+  <script>
+    document.getElementById('title-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('title'); });
+    document.getElementById('content-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('content'); });
+
+    async function search(type) {
+      const query = document.getElementById(`${type}-query`).value.trim();
+      const metaEl = document.getElementById(`${type}-meta`);
+      const resultsEl = document.getElementById(`${type}-results`);
+
+      if (!query) { metaEl.textContent = ''; resultsEl.innerHTML = ''; return; }
+
+      metaEl.textContent = '검색 중...';
+      resultsEl.innerHTML = '';
+
+      try {
+        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}`);
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          metaEl.textContent = '';
+          resultsEl.innerHTML = `<div class="error">${JSON.stringify(data)}</div>`;
+          return;
+        }
+
+        metaEl.textContent = `총 ${data.total}건`;
+
+        if (!data.items || data.items.length === 0) {
+          resultsEl.innerHTML = '<div class="empty">결과 없음</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = data.items.map(item => `
+          <div class="card" id="card-${type}-${item.id}">
+            <div class="card-header">
+              <div>
+                <div class="title" onclick="toggleBody('${type}', ${item.id})">${item.title}</div>
+                <div class="info">
+                  id=${item.id}
+                  ${item.eventStart ? '· ' + item.eventStart.slice(0,10) : ''}
+                  ${item.applyStart ? '· 신청 ' + item.applyStart.slice(0,10) : ''}
+                </div>
+              </div>
+              <button class="toggle-btn" onclick="toggleBody('${type}', ${item.id})">본문 보기</button>
+            </div>
+            <div class="body-content" id="body-${type}-${item.id}" style="display:none;"></div>
+          </div>
+        `).join('');
+      } catch (e) {
+        metaEl.textContent = '';
+        resultsEl.innerHTML = `<div class="error">오류: ${e.message}</div>`;
+      }
+    }
+
+    const bodyCache = {};
+
+    async function toggleBody(type, id) {
+      const bodyEl = document.getElementById(`body-${type}-${id}`);
+      const btn = document.querySelector(`#card-${type}-${id} .toggle-btn`);
+
+      if (bodyEl.style.display !== 'none') {
+        bodyEl.style.display = 'none';
+        btn.textContent = '본문 보기';
+        return;
+      }
+
+      bodyEl.style.display = 'block';
+      btn.textContent = '본문 닫기';
+
+      if (bodyCache[id] !== undefined) {
+        bodyEl.innerHTML = bodyCache[id] || '<span style="color:#999">본문 없음</span>';
+        return;
+      }
+
+      bodyEl.innerHTML = '<span style="color:#999">로딩 중...</span>';
+      try {
+        const resp = await fetch(`/api/v1/events/${id}`);
+        const data = await resp.json();
+        const html = data.detail || '';
+        bodyCache[id] = html;
+        bodyEl.innerHTML = html || '<span style="color:#999">본문 없음</span>';
+      } catch (e) {
+        bodyEl.innerHTML = `<span style="color:#ef4444">로드 실패: ${e.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>
