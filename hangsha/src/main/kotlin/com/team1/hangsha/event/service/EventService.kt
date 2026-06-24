@@ -238,9 +238,9 @@ class EventService(
         val safeSize = max(1, size)
         val offset = (safePage - 1) * safeSize
 
-        // Manticore score 순으로 정렬된 ID 리스트를 page/size로 슬라이싱한 뒤 MySQL 조회
-        val pageIds = result.eventIds.drop(offset).take(safeSize)
-        val events = eventQueryRepository.findVisibleByIds(pageIds)
+        // MySQL에서 date순으로 정렬된 전체 결과를 가져온 뒤 page/size로 슬라이싱
+        val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
+        val events = allEvents.drop(offset).take(safeSize)
 
         val auth = userId != null
         val interestPriorityByCategoryId = loadInterestMap(userId)
