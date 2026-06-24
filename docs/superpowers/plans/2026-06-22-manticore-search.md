@@ -1096,7 +1096,123 @@ git commit -m "feat: add reindexAll() to ManticoreIndexService and /admin/search
 
 ---
 
-### Task 11: 검색 고도화 (보류)
+### Task 11: EventSyncService에 OutboxWriter 연결 (인덱스 자동 동기화)
+
+**Files:**
+- Modify: `common/src/main/kotlin/com/team1/hangsha/event/service/EventSyncService.kt`
+- Modify: `src/main/kotlin/com/team1/hangsha/event/controller/EventSyncController.kt`
+
+**Interfaces:**
+- `EventSyncService`의 모든 public 메서드가 이미 `@Transactional` → 같은 트랜잭션 내에서 `outboxWriter` 호출
+- `deleteAll`은 `outboxWriter`를 쓰지 않고 `ManticoreIndexService.reindexAll()` 직접 호출 (전체 truncate + 재인덱싱)
+
+**대상 메서드:**
+
+| 메서드 | Outbox 처리 |
+|---|---|
+| `sync()` | `eventRepository.save()` 반환값으로 id 획득 → `outboxWriter.upsert(id)` |
+| `createEvent()` | saved id → `outboxWriter.upsert(id)` |
+| `patchEvent()` | saved id → `outboxWriter.upsert(id)` |
+| `deleteEvent()` | `outboxWriter.delete(eventId)` |
+| `updateOverrides()` | saved id → `outboxWriter.upsert(id)` |
+| `EventSyncController.deleteAll()` | `ManticoreIndexService.reindexAll()` 호출 (outbox 미사용) |
+
+- [ ] **Step 1: EventSyncService에 EventSearchOutboxWriter 주입 및 각 메서드에 outbox 호출 추가**
+
+`sync()` 내 save 후:
+```kotlin
+val saved = eventRepository.save(model)
+outboxWriter.upsert(requireNotNull(saved.id))
+upserted++
+```
+
+`createEvent()`, `patchEvent()`, `updateOverrides()` 내 save 후:
+```kotlin
+val saved = eventRepository.save(...)
+outboxWriter.upsert(requireNotNull(saved.id))
+```
+
+`deleteEvent()` 내:
+```kotlin
+outboxWriter.delete(eventId)
+```
+
+- [ ] **Step 2: EventSyncController.deleteAll()에 Manticore truncate 추가**
+
+`ManticoreIndexService` 주입 후 `deleteAll()` 내:
+```kotlin
+@DeleteMapping("/delete")
+fun deleteAll(): Map<String, Any> {
+    val deleted = eventRepository.deleteAllEventsRaw()
+    manticoreIndexService.reindexAll()  // truncate + 재인덱싱 (0건이므로 truncate만 동작)
+    return mapOf("deleted", deleted)
+}
+```
+
+- [ ] **Step 3: 통합 테스트**
+
+1. 이벤트 단건 생성 → outbox에 PENDING 레코드 확인 → OutboxWorker 5초 후 Manticore 반영 확인
+2. 이벤트 수정 → 동일
+3. 이벤트 삭제 → Manticore에서 제거 확인
+4. `DELETE /api/v1/admin/events/delete` → Manticore 전체 비워지는지 확인
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add common/src/main/kotlin/com/team1/hangsha/event/service/EventSyncService.kt \
+        src/main/kotlin/com/team1/hangsha/event/controller/EventSyncController.kt
+git commit -m "feat: wire EventSearchOutboxWriter into EventSyncService for auto index sync"
+```
+
+---
+
+### Task 13: 검색 API 페이지네이션 계약 수정
+
+> **배경**: Task 9 구현 시 `/search/title`에서 `page`/`size`를 제거하고 전체 결과를 반환하도록 바꿨는데, hangsha-web이 기존 페이지네이션 계약(`page`, `size`, `total` 기반)을 그대로 사용하고 있어 프론트엔드 페이지네이션이 깨지는 문제 발생.
+
+**Files:**
+- Modify: `src/main/kotlin/com/team1/hangsha/event/controller/EventController.kt`
+- Modify: `src/main/kotlin/com/team1/hangsha/event/service/EventService.kt`
+
+**변경 내용:**
+
+- `/search/title`: `page`(기본 1), `size`(기본 20) 파라미터 복구
+- `/search/content`: `page`(기본 1), `size`(기본 20) 파라미터 추가
+- 페이지네이션 방식: Manticore에서 전체 매칭 ID(최대 1000개)를 받아온 뒤 MySQL에서 **date순** 정렬 후 `page`/`size`로 in-memory 슬라이싱
+  - score순 슬라이싱이 아닌 date순 정렬 후 슬라이싱이어야 cross-page 정렬 일관성 보장
+
+**한계:**
+- Manticore limit=1000 → 결과가 1000건 초과 시 일부 누락 (캠퍼스 이벤트 규모에서 현실적 문제 없음)
+- 1000건 초과 시 `total`은 실제 수를 반환하지만 items는 최대 1000건 내에서만 제공됨
+
+- [x] **Step 1: EventController — `/search/title`에 page/size 복구, `/search/content`에 page/size 추가**
+- [x] **Step 2: EventService — `searchTitle()`/`searchContent()` 시그니처에 page/size 추가**
+- [x] **Step 3: `buildSearchResponse()` — MySQL date-sort 결과 전체를 받아 in-memory 슬라이싱**
+- [x] **Step 4: Commit** (`4d065be`, `ca2d09a`, `bc247e6`)
+
+---
+
+### Task 14: 검색 테스트 페이지 (임시)
+
+> 인덱싱 결과를 육안으로 확인하기 위한 임시 정적 HTML 페이지. 커밋은 했지만 추후 제거 대상.
+
+**Files:**
+- Create: `src/main/resources/static/hangsha-search-test.html`
+
+**접근 경로:** `http://localhost:8080/static/hangsha-search-test.html`
+
+**기능:**
+- 타이틀 검색 / 본문 검색 각각 독립 입력창 + 검색 버튼
+- 각 섹션마다 size 입력 필드 (기본 12) → 서버에 `size` 파라미터로 전달
+- 결과 카드: 제목, id, 날짜 표시 + "본문 보기" 토글 (클릭 시 `/api/v1/events/{id}`로 `detail` 필드 로드)
+- 타이틀/본문 각각 이전/다음 페이지네이션 UI
+
+- [x] **Step 1: `static/hangsha-search-test.html` 생성** (`c14ed4d`)
+- [x] **Step 2: 페이지네이션 UI 및 size 입력 추가** (`bc247e6`, `b8b6243`)
+
+---
+
+### Task 15: 검색 고도화 (보류)
 
 > **현재 구현**: kiwi 형태소 분석 → 공백 분리 토큰 → Manticore 단순 match
 > **참고 문서**: `docs/manticore-plan.md`
