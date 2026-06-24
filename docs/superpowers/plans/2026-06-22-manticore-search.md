@@ -497,143 +497,58 @@ git commit -m "feat: add event_search_outbox table and repository"
 
 ---
 
-### Task 5: EventSyncService outbox 이벤트 발행 + hangsha listener
+### Task 5: EventSearchOutboxWriter 헬퍼 생성
+
+EventSyncService와 무관하게 common에 outbox 등록 헬퍼만 만든다.
+호출 지점(EventSyncService, 크롤러 등)에서 주입해 사용하는 것은 각 호출자의 책임이다.
 
 **Files:**
-- Create: `common/src/main/kotlin/com/team1/hangsha/event/EventSearchSyncEvent.kt`
-- Modify: `common/src/main/kotlin/com/team1/hangsha/event/service/EventSyncService.kt`
-- Create: `common/src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxListener.kt`
+- Create: `common/src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxWriter.kt`
 
 **Interfaces:**
-- Consumes: `EventSearchOutboxRepository` (크롤러 + API 서버 공용)
-- Produces: `EventSyncService` → `ApplicationEventPublisher.publishEvent(EventSearchSyncEvent)`
-- Produces: `EventSearchOutboxListener.onEvent(event)` → outbox 레코드 저장
+- Consumes: `EventSearchOutboxRepository`
+- Produces: `EventSearchOutboxWriter.upsert(eventId: Long)`
+- Produces: `EventSearchOutboxWriter.delete(eventId: Long)`
 
-- [ ] **Step 1: EventSearchSyncEvent 작성 (common 모듈)**
+- [ ] **Step 1: EventSearchOutboxWriter 작성**
 
-`common/src/main/kotlin/com/team1/hangsha/event/EventSearchSyncEvent.kt`:
-```kotlin
-package com.team1.hangsha.event
-
-data class EventSearchSyncEvent(
-    val eventId: Long,
-    val operation: Operation,
-) {
-    enum class Operation { UPSERT, DELETE }
-}
-```
-
-- [ ] **Step 2: EventSyncService에 publisher 주입 및 publishEvent 호출 추가**
-
-`common/src/main/kotlin/com/team1/hangsha/event/service/EventSyncService.kt`에서:
-
-생성자에 `ApplicationEventPublisher` 추가:
-```kotlin
-@Service
-class EventSyncService(
-    private val objectMapper: ObjectMapper,
-    private val eventRepository: EventRepository,
-    private val categoryGroupRepository: CategoryGroupRepository,
-    private val categoryRepository: CategoryRepository,
-    private val eventPublisher: org.springframework.context.ApplicationEventPublisher,
-)
-```
-
-`sync()` 메서드 내 `eventRepository.save(model)` 직후에 추가:
-```kotlin
-val saved = eventRepository.save(model)
-eventPublisher.publishEvent(
-    EventSearchSyncEvent(requireNotNull(saved.id), EventSearchSyncEvent.Operation.UPSERT)
-)
-upserted++
-```
-
-`createEvent()` 내 `eventRepository.save(model)` 직후:
-```kotlin
-val saved = eventRepository.save(model)
-eventPublisher.publishEvent(
-    EventSearchSyncEvent(requireNotNull(saved.id), EventSearchSyncEvent.Operation.UPSERT)
-)
-return mapOf("ok" to true, "eventId" to saved.id)
-```
-
-`patchEvent()` 내 `eventRepository.save(updated)` 직후:
-```kotlin
-val saved = eventRepository.save(updated)
-eventPublisher.publishEvent(
-    EventSearchSyncEvent(requireNotNull(saved.id), EventSearchSyncEvent.Operation.UPSERT)
-)
-return mapOf("ok" to true, "eventId" to (saved.id ?: eventId))
-```
-
-`deleteEvent()` 내 `eventRepository.softDeleteById(eventId)` 직후:
-```kotlin
-val affected = eventRepository.softDeleteById(eventId)
-if (affected == 0) throw DomainException(ErrorCode.EVENT_NOT_FOUND)
-eventPublisher.publishEvent(
-    EventSearchSyncEvent(eventId, EventSearchSyncEvent.Operation.DELETE)
-)
-return mapOf("ok" to true, "deletedEventId" to eventId)
-```
-
-- [ ] **Step 3: EventSearchOutboxListener 작성 (hangsha 모듈)**
-
-`src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxListener.kt`:
+`common/src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxWriter.kt`:
 ```kotlin
 package com.team1.hangsha.search.outbox
 
-import com.team1.hangsha.event.EventSearchSyncEvent
-import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 
 @Component
-class EventSearchOutboxListener(
+class EventSearchOutboxWriter(
     private val outboxRepository: EventSearchOutboxRepository,
 ) {
-    @EventListener
-    fun onEvent(event: EventSearchSyncEvent) {
+    fun upsert(eventId: Long) {
         outboxRepository.save(
-            EventSearchOutbox(
-                eventId = event.eventId,
-                operation = EventSearchOutbox.Operation.valueOf(event.operation.name),
-            )
+            EventSearchOutbox(eventId = eventId, operation = EventSearchOutbox.Operation.UPSERT)
+        )
+    }
+
+    fun delete(eventId: Long) {
+        outboxRepository.save(
+            EventSearchOutbox(eventId = eventId, operation = EventSearchOutbox.Operation.DELETE)
         )
     }
 }
 ```
 
-- [ ] **Step 4: 빌드 확인**
+- [ ] **Step 2: 빌드 확인**
 
 Run:
 ```bash
-./gradlew :compileKotlin :batch:compileKotlin
+./gradlew :common:compileKotlin
 ```
-Expected: BUILD SUCCESSFUL (batch 포함 컴파일 성공)
+Expected: BUILD SUCCESSFUL
 
-- [ ] **Step 5: 수동 통합 테스트 — outbox 엔트리 생성 확인**
-
-앱 기동 후, admin API로 이벤트 생성:
-```bash
-curl -s -X POST http://localhost:8080/api/v1/admin/events \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <admin-token>" \
-  -d '{"title": "융합사업단 지원 프로그램 테스트"}'
-```
-
-DB 확인:
-```bash
-mysql -h 127.0.0.1 -P 3307 -u user -ppassword campus_db \
-  -e "SELECT * FROM event_search_outbox ORDER BY id DESC LIMIT 5;"
-```
-Expected: operation=UPSERT, status=PENDING 레코드 존재
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add common/src/main/kotlin/com/team1/hangsha/event/EventSearchSyncEvent.kt \
-        common/src/main/kotlin/com/team1/hangsha/event/service/EventSyncService.kt \
-        src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxListener.kt
-git commit -m "feat: publish EventSearchSyncEvent from EventSyncService and write outbox in hangsha"
+git add common/src/main/kotlin/com/team1/hangsha/search/outbox/EventSearchOutboxWriter.kt
+git commit -m "feat: add EventSearchOutboxWriter helper in common"
 ```
 
 ---
@@ -646,7 +561,7 @@ git commit -m "feat: publish EventSearchSyncEvent from EventSyncService and writ
 
 **Interfaces:**
 - Consumes: `ManticoreClient`, `KiwiTokenizerClient`
-- Produces: `ManticoreIndexService.indexEvent(event: Event)` — kiwi 토크나이즈 후 Manticore에 replace
+- Produces: `ManticoreIndexService.indexEvent(event: Event)` — kiwi 토크나이즈 후 Manticore에 upsert
 - Produces: `ManticoreIndexService.deleteEvent(eventId: Long)` — Manticore에서 삭제
 
 - [ ] **Step 1: common build.gradle.kts에 jsoup 추가**
@@ -678,7 +593,7 @@ class ManticoreIndexService(
         val rawContent = event.mainContentHtml?.let { stripHtml(it) } ?: ""
         val tokenizedContent = if (rawContent.isBlank()) "" else kiwiTokenizerClient.tokenize(rawContent)
 
-        manticoreClient.replace(
+        manticoreClient.upsert(
             index = indexName,
             id = requireNotNull(event.id) { "Event id must not be null" },
             doc = mapOf(
@@ -1098,18 +1013,32 @@ package com.team1.hangsha.search
 
 import com.team1.hangsha.event.repository.EventRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Service
 class ManticoreReindexService(
+    @Value("\${manticore.base-url}") private val baseUrl: String,
     private val eventRepository: EventRepository,
     private val manticoreIndexService: ManticoreIndexService,
-    private val manticoreClient: ManticoreClient,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val client by lazy { RestClient.create(baseUrl) }
 
     fun reindexAll(): Map<String, Any> {
-        manticoreClient.sql("TRUNCATE TABLE events_search")
+        // sql()은 ManticoreClient에 없으므로 직접 HTTP 호출
+        val sql = "TRUNCATE TABLE events_search"
+        val encoded = URLEncoder.encode(sql, StandardCharsets.UTF_8)
+        client.post()
+            .uri("/sql?mode=raw")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body("query=$encoded")
+            .retrieve()
+            .toBodilessEntity()
         log.info("Truncated events_search table for full reindex")
 
         var indexed = 0
