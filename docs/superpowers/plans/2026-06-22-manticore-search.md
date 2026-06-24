@@ -1113,3 +1113,20 @@ git add src/main/kotlin/com/team1/hangsha/search/ManticoreReindexService.kt \
         src/main/kotlin/com/team1/hangsha/search/SearchAdminController.kt
 git commit -m "feat: add /admin/search/reindex compensation endpoint"
 ```
+
+---
+
+### Task 11: 검색 고도화 (보류)
+
+> **현재 구현**: kiwi 형태소 분석 → 공백 분리 토큰 → Manticore 단순 match
+> **참고 문서**: `docs/manticore-plan.md`
+
+아래 항목은 기본 검색이 안정화된 후 진행한다.
+
+- [ ] 테이블 스키마 변경: `title` / `content` → `title_tokens` / `content_tokens` / `title_raw` / `content_raw` (4필드)
+- [ ] `min_infix_len=2`, `rt_mem_limit=64M` 옵션 추가
+- [ ] kiwi 사이드카: 특수문자 전처리 + NNG/NNP/VV 등 품사 필터링 적용
+- [ ] 검색 쿼리: `bool/should` OR (kiwi tokens + raw 두 경로 합산) + infix 래핑 (`*token*`)
+- [ ] `CALL SUGGEST` 기반 철자 교정 (편집 거리 1, 접미사 치환만 적용)
+- [ ] Recall/Precision 튜닝: 토큰 수 기반 동적 quorum 연산자
+
