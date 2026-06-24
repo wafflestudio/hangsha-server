@@ -94,6 +94,9 @@ class EventSyncController(
     @DeleteMapping("/delete")
     fun deleteAll(): Map<String, Any> {
         val deleted = eventRepository.deleteAllEventsRaw()
+        // Manticore는 별도 시스템이라 MySQL과 동일 트랜잭션으로 묶을 수 없음.
+        // admin 전용 비상 연산이므로 dual-write를 감수하고 편의성 우선.
+        // Manticore 불일치 발생 시 POST /api/v1/admin/search/reindex 로 수동 복구 가능.
         manticoreIndexService.reindexAll()
         return mapOf("ok" to true, "deleted" to deleted)
     }
