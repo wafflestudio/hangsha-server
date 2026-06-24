@@ -22,7 +22,7 @@ class ManticoreTableInitializer(
             CREATE TABLE IF NOT EXISTS events_search(
                 title TEXT,
                 content TEXT
-            ) type='rt'
+            ) type='rt' charset_table='non_cjk, U+AC00..U+D7AF, U+1100..U+11FF, U+3130..U+318F'
         """.trimIndent()
 
         try {
