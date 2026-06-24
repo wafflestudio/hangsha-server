@@ -14,7 +14,8 @@ class ManticoreClient(
     private val client by lazy { RestClient.create(baseUrl) }
 
     @Suppress("UNCHECKED_CAST")
-    fun replace(index: String, id: Long, doc: Map<String, Any>): Map<String, Any> {
+    fun upsert(index: String, id: Long, doc: Map<String, Any>): Map<String, Any> {
+        // index : table이름, id : 게시글 identifier, doc : 실제 게시글 데이터(json 형태.)
         val body = mapOf("index" to index, "id" to id, "doc" to doc)
         return client.post()
             .uri("/json/replace")
