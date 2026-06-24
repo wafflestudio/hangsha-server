@@ -12,6 +12,7 @@ import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventQueryRepository
 import com.team1.hangsha.event.repository.EventRepository
+import com.team1.hangsha.search.ManticoreSearchService
 import com.team1.hangsha.user.repository.UserInterestCategoryRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDate
@@ -24,6 +25,7 @@ class EventService(
     private val eventQueryRepository: EventQueryRepository,
     private val userInterestCategoryRepository: UserInterestCategoryRepository,
     private val bookmarkRepository: BookmarkRepository,
+    private val manticoreSearchService: ManticoreSearchService,
 ) {
 
     fun getMonthEvents(
@@ -202,28 +204,41 @@ class EventService(
 
     fun searchTitle(
         query: String,
-        page: Int,
-        size: Int,
         userId: Long?,
     ): TitleSearchEventResponse {
         val q = query.trim()
-        if (q.isEmpty()) {
-            throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
-        }
+        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
 
-        val safePage = max(1, page)
-        val safeSize = max(1, size)
-        val offset = (safePage - 1) * safeSize
+        val result = manticoreSearchService.searchByTitle(q)
+        // TODO: 제외 키워드 필터 적용 여부 결정 필요
+        return buildSearchResponse(result, userId)
+    }
 
-        val total = eventQueryRepository.countByTitleContains(q, userId)
-        val events = eventQueryRepository.findByTitleContainsPaged(q, offset, safeSize, userId)
+    fun searchContent(
+        query: String,
+        userId: Long?,
+    ): TitleSearchEventResponse {
+        val q = query.trim()
+        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
 
-        val interestPriorityByCategoryId = loadInterestMap(userId)
+        val result = manticoreSearchService.searchByContent(q)
+        // TODO: 제외 키워드 필터 적용 여부 결정 필요
+        return buildSearchResponse(result, userId)
+    }
+
+    private fun buildSearchResponse(
+        result: ManticoreSearchService.SearchResult,
+        userId: Long?,
+    ): TitleSearchEventResponse {
+        // Manticore score 순 → 최신순 정렬은 findVisibleByIds 내부 ORDER BY로 처리
+        // TODO: 나중에 score 기반 정렬 vs 최신순 정렬 전략 선택 필요
+        val events = eventQueryRepository.findVisibleByIds(result.eventIds)
+
         val auth = userId != null
+        val interestPriorityByCategoryId = loadInterestMap(userId)
         val bookmarkedIds: Set<Long> =
             if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
-                userId,
-                events.mapNotNull { it.id }
+                userId!!, events.mapNotNull { it.id }
             ) else emptySet()
 
         val items = events.map { e ->
@@ -233,9 +248,9 @@ class EventService(
         }
 
         return TitleSearchEventResponse(
-            page = safePage,
-            size = safeSize,
-            total = total,
+            page = 1,
+            size = items.size,
+            total = result.total,
             items = items,
         )
     }
