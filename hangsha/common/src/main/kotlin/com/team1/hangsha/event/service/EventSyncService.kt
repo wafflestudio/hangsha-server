@@ -17,6 +17,7 @@ import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.repository.EventRepository
+import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -32,6 +33,7 @@ class EventSyncService(
     private val eventRepository: EventRepository,
     private val categoryGroupRepository: CategoryGroupRepository,
     private val categoryRepository: CategoryRepository,
+    private val outboxWriter: EventSearchOutboxWriter,
 ) {
 
     data class SyncResult(val total: Int, val upserted: Int, val skipped: Int)
@@ -175,7 +177,8 @@ class EventSyncService(
                     existing = existing,
                 )
 
-                eventRepository.save(model)
+                val saved = eventRepository.save(model)
+                outboxWriter.upsert(requireNotNull(saved.id))
                 upserted++
             }
         }
@@ -484,6 +487,7 @@ class EventSyncService(
         )
 
         val saved = eventRepository.save(model)
+        outboxWriter.upsert(requireNotNull(saved.id))
 
         return mapOf(
             "ok" to true,
@@ -544,6 +548,7 @@ class EventSyncService(
         )
 
         val saved = eventRepository.save(updated)
+        outboxWriter.upsert(saved.id ?: eventId)
         return mapOf("ok" to true, "eventId" to (saved.id ?: eventId))
     }
 
@@ -555,6 +560,7 @@ class EventSyncService(
             throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 
+        outboxWriter.delete(eventId)
         return mapOf("ok" to true, "deletedEventId" to eventId)
     }
 
