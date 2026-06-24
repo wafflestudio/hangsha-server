@@ -111,9 +111,13 @@ class EventController(
     fun searchContent(
         @Parameter(hidden = true) @LoggedInUser user: User?,
         @RequestParam("query") query: String,
+        @RequestParam("page", defaultValue = "1") page: Int,
+        @RequestParam("size", defaultValue = "20") size: Int,
     ): TitleSearchEventResponse =
         eventService.searchContent(
             query = query,
+            page = page,
+            size = size,
             userId = user?.id,
         )
 }

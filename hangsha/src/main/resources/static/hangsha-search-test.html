@@ -10,6 +10,7 @@
     input { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
     button { padding: 8px 16px; cursor: pointer; border-radius: 4px; border: none; background: #3b82f6; color: #fff; font-size: 14px; }
     button:hover { background: #2563eb; }
+    button:disabled { background: #9ca3af; cursor: default; }
     .meta { font-size: 13px; color: #666; margin-bottom: 8px; }
     .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
@@ -22,7 +23,9 @@
     .card .toggle-btn:hover { background: #e5e7eb; }
     .empty { color: #999; font-size: 14px; }
     .error { color: #ef4444; font-size: 13px; }
-    #title-results, #content-results { margin-top: 8px; }
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+    .pagination span { font-size: 13px; color: #444; }
+    .page-btn { padding: 6px 12px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -31,35 +34,54 @@
   <h2>타이틀 검색</h2>
   <div class="row">
     <input id="title-query" placeholder="검색어 입력" />
-    <button onclick="search('title')">검색</button>
+    <button onclick="search('title', 1)">검색</button>
   </div>
   <div id="title-meta" class="meta"></div>
   <div id="title-results"></div>
+  <div class="pagination" id="title-pagination" style="display:none;">
+    <button class="page-btn" id="title-prev" onclick="search('title', state.title.page - 1)">이전</button>
+    <span id="title-page-info"></span>
+    <button class="page-btn" id="title-next" onclick="search('title', state.title.page + 1)">다음</button>
+  </div>
 
   <h2>본문 검색</h2>
   <div class="row">
     <input id="content-query" placeholder="검색어 입력" />
-    <button onclick="search('content')">검색</button>
+    <button onclick="search('content', 1)">검색</button>
   </div>
   <div id="content-meta" class="meta"></div>
   <div id="content-results"></div>
+  <div class="pagination" id="content-pagination" style="display:none;">
+    <button class="page-btn" id="content-prev" onclick="search('content', state.content.page - 1)">이전</button>
+    <span id="content-page-info"></span>
+    <button class="page-btn" id="content-next" onclick="search('content', state.content.page + 1)">다음</button>
+  </div>
 
   <script>
-    document.getElementById('title-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('title'); });
-    document.getElementById('content-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('content'); });
+    const PAGE_SIZE = 12;
 
-    async function search(type) {
+    const state = {
+      title:   { page: 1, total: 0, totalPages: 1 },
+      content: { page: 1, total: 0, totalPages: 1 },
+    };
+
+    document.getElementById('title-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('title', 1); });
+    document.getElementById('content-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('content', 1); });
+
+    async function search(type, page) {
       const query = document.getElementById(`${type}-query`).value.trim();
       const metaEl = document.getElementById(`${type}-meta`);
       const resultsEl = document.getElementById(`${type}-results`);
+      const paginationEl = document.getElementById(`${type}-pagination`);
 
-      if (!query) { metaEl.textContent = ''; resultsEl.innerHTML = ''; return; }
+      if (!query) { metaEl.textContent = ''; resultsEl.innerHTML = ''; paginationEl.style.display = 'none'; return; }
 
       metaEl.textContent = '검색 중...';
       resultsEl.innerHTML = '';
+      paginationEl.style.display = 'none';
 
       try {
-        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}`);
+        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}&page=${page}&size=${PAGE_SIZE}`);
         const data = await resp.json();
 
         if (!resp.ok) {
@@ -67,6 +89,11 @@
           resultsEl.innerHTML = `<div class="error">${JSON.stringify(data)}</div>`;
           return;
         }
+
+        const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+        state[type].page = page;
+        state[type].total = data.total;
+        state[type].totalPages = totalPages;
 
         metaEl.textContent = `총 ${data.total}건`;
 
@@ -91,6 +118,13 @@
             <div class="body-content" id="body-${type}-${item.id}" style="display:none;"></div>
           </div>
         `).join('');
+
+        if (totalPages > 1) {
+          paginationEl.style.display = 'flex';
+          document.getElementById(`${type}-page-info`).textContent = `${page} / ${totalPages}`;
+          document.getElementById(`${type}-prev`).disabled = page <= 1;
+          document.getElementById(`${type}-next`).disabled = page >= totalPages;
+        }
       } catch (e) {
         metaEl.textContent = '';
         resultsEl.innerHTML = `<div class="error">오류: ${e.message}</div>`;

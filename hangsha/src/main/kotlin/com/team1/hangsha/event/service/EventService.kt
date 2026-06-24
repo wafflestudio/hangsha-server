@@ -218,6 +218,8 @@ class EventService(
 
     fun searchContent(
         query: String,
+        page: Int,
+        size: Int,
         userId: Long?,
     ): TitleSearchEventResponse {
         val q = query.trim()
@@ -225,7 +227,7 @@ class EventService(
 
         val result = manticoreSearchService.searchByContent(q)
         // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, page = 1, size = Int.MAX_VALUE, userId)
+        return buildSearchResponse(result, page, size, userId)
     }
 
     private fun buildSearchResponse(
