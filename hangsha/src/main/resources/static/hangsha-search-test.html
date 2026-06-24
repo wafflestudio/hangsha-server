@@ -34,6 +34,7 @@
   <h2>타이틀 검색</h2>
   <div class="row">
     <input id="title-query" placeholder="검색어 입력" />
+    <input id="title-size" type="number" min="1" max="100" value="12" style="flex:0;width:70px;" placeholder="size" />
     <button onclick="search('title', 1)">검색</button>
   </div>
   <div id="title-meta" class="meta"></div>
@@ -47,6 +48,7 @@
   <h2>본문 검색</h2>
   <div class="row">
     <input id="content-query" placeholder="검색어 입력" />
+    <input id="content-size" type="number" min="1" max="100" value="12" style="flex:0;width:70px;" placeholder="size" />
     <button onclick="search('content', 1)">검색</button>
   </div>
   <div id="content-meta" class="meta"></div>
@@ -58,11 +60,9 @@
   </div>
 
   <script>
-    const PAGE_SIZE = 12;
-
     const state = {
-      title:   { page: 1, total: 0, totalPages: 1 },
-      content: { page: 1, total: 0, totalPages: 1 },
+      title:   { page: 1, total: 0, totalPages: 1, size: 12 },
+      content: { page: 1, total: 0, totalPages: 1, size: 12 },
     };
 
     document.getElementById('title-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('title', 1); });
@@ -70,6 +70,7 @@
 
     async function search(type, page) {
       const query = document.getElementById(`${type}-query`).value.trim();
+      const size = Math.max(1, parseInt(document.getElementById(`${type}-size`).value) || 12);
       const metaEl = document.getElementById(`${type}-meta`);
       const resultsEl = document.getElementById(`${type}-results`);
       const paginationEl = document.getElementById(`${type}-pagination`);
@@ -81,7 +82,7 @@
       paginationEl.style.display = 'none';
 
       try {
-        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}&page=${page}&size=${PAGE_SIZE}`);
+        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}&page=${page}&size=${size}`);
         const data = await resp.json();
 
         if (!resp.ok) {
@@ -90,10 +91,11 @@
           return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(data.total / size));
         state[type].page = page;
         state[type].total = data.total;
         state[type].totalPages = totalPages;
+        state[type].size = size;
 
         metaEl.textContent = `총 ${data.total}건`;
 
