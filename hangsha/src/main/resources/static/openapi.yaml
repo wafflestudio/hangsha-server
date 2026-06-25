@@ -1371,43 +1371,82 @@ paths:
         "401":
           description: Unauthorized
 
+  /memos/by-event/{eventId}:
+    get:
+      tags: [ Memos ]
+      summary: Get my memo by event
+      description: |
+        특정 이벤트(eventId)에 대해 내가 작성한 단일 메모를 반환합니다.
+        - 한 유저와 한 이벤트에 대해서는 하나의 메모만 존재합니다.
+        - 해당 eventId에 대한 내 메모가 없으면 MEMO_NOT_FOUND(404)
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 160
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoResponse"
+        "401":
+          description: Unauthorized
+        "404":
+          description: MEMO_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                memoNotFound:
+                  value:
+                    code: MEMO_NOT_FOUND
+                    message: "메모를 찾을 수 없습니다"
+
   /memos/by-tag/{tagId}:
-      get:
-        tags: [ Memos ]
-        summary: Get my memos by tag
-        description: |
-          특정 태그(tagId)를 가진 내 메모 목록을 반환합니다.
-          - tagId가 존재하지 않거나, 내 태그가 아니면 TAG_NOT_FOUND(404)
-        security:
-          - bearerAuth: [ ]
-        parameters:
-          - name: tagId
-            in: path
-            required: true
-            schema:
-              type: integer
-              format: int64
-            example: 123
-        responses:
-          "200":
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/ListMemoResponse"
-          "401":
-            description: Unauthorized
-          "404":
-            description: TAG_NOT_FOUND
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/ErrorResponse"
-                examples:
-                  tagNotFound:
-                    value:
-                      code: TAG_NOT_FOUND
-                      message: "태그를 찾을 수 없습니다"
+    get:
+      tags: [ Memos ]
+      summary: Get my memos by tag
+      description: |
+        특정 태그(tagId)를 가진 내 메모 목록을 반환합니다.
+        - tagId가 존재하지 않거나, 내 태그가 아니면 TAG_NOT_FOUND(404)
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 123
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMemoResponse"
+        "401":
+          description: Unauthorized
+        "404":
+          description: TAG_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                tagNotFound:
+                  value:
+                    code: TAG_NOT_FOUND
+                    message: "태그를 찾을 수 없습니다"
 
   /memos/{memoId}:
       patch:
