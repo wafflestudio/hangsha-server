@@ -16,25 +16,37 @@ class ManticoreSearchService(
     data class SearchResult(val eventIds: List<Long>, val total: Int)
 
     fun searchByTitle(query: String): SearchResult {
-        /*
-        * search-path
-        * 1. kiwiTokenizerClient로 토크나이징 한다.
-        * 2. tokenizedString을 doSearch로 넘긴다. 이는 manti
-        * */
         val tokenized = kiwiTokenizerClient.tokenize(query)
-        return doSearch(field = "title", tokenizedQuery = tokenized)
+        return doSearch(field = "title", tokenizedQuery = tokenized, rawQuery = query)
     }
 
     fun searchByContent(query: String): SearchResult {
         val tokenized = kiwiTokenizerClient.tokenize(query)
-        return doSearch(field = "content", tokenizedQuery = tokenized)
+        return doSearch(field = "content", tokenizedQuery = tokenized, rawQuery = query)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun doSearch(field: String, tokenizedQuery: String): SearchResult {
+    private fun doSearch(field: String, tokenizedQuery: String, rawQuery: String): SearchResult {
+        val infixQuery = rawQuery.trim().split("\\s+".toRegex())
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { "*$it*" }
+
+        val shouldClauses = buildList {
+            if (tokenizedQuery.isNotBlank()) {
+                add(mapOf("match" to mapOf(
+                    "${field}_tokens" to mapOf("query" to tokenizedQuery, "operator" to "and")
+                )))
+            }
+            add(mapOf("match" to mapOf(
+                "${field}_raw" to mapOf("query" to infixQuery, "operator" to "and")
+            )))
+        }
+
         val requestBody = mapOf(
             "index" to indexName,
-            "query" to mapOf("match" to mapOf(field to tokenizedQuery)),
+            "query" to mapOf(
+                "bool" to mapOf("should" to shouldClauses)
+            ),
             "limit" to 1000,
         )
         val response = manticoreClient.search(requestBody)
