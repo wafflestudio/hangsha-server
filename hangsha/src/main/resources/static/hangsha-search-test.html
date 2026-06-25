@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>검색 테스트</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }
+    h2 { margin-top: 32px; }
+    .row { display: flex; gap: 8px; margin-bottom: 16px; }
+    input { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 8px 16px; cursor: pointer; border-radius: 4px; border: none; background: #3b82f6; color: #fff; font-size: 14px; }
+    button:hover { background: #2563eb; }
+    button:disabled { background: #9ca3af; cursor: default; }
+    .meta { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .card .title { font-weight: bold; margin-bottom: 4px; cursor: pointer; color: #1d4ed8; }
+    .card .title:hover { text-decoration: underline; }
+    .card .info { font-size: 12px; color: #666; margin-bottom: 6px; }
+    .card .body-content { margin-top: 10px; border-top: 1px solid #f0f0f0; padding-top: 10px; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto; }
+    .card .body-content img { max-width: 100%; height: auto; }
+    .card .toggle-btn { font-size: 12px; padding: 3px 8px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .card .toggle-btn:hover { background: #e5e7eb; }
+    .empty { color: #999; font-size: 14px; }
+    .error { color: #ef4444; font-size: 13px; }
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+    .pagination span { font-size: 13px; color: #444; }
+    .page-btn { padding: 6px 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>검색 테스트</h1>
+
+  <h2>타이틀 검색</h2>
+  <div class="row">
+    <input id="title-query" placeholder="검색어 입력" />
+    <input id="title-size" type="number" min="1" max="100" value="12" style="flex:0;width:70px;" placeholder="size" />
+    <button onclick="search('title', 1)">검색</button>
+  </div>
+  <div id="title-meta" class="meta"></div>
+  <div id="title-results"></div>
+  <div class="pagination" id="title-pagination" style="display:none;">
+    <button class="page-btn" id="title-prev" onclick="search('title', state.title.page - 1)">이전</button>
+    <span id="title-page-info"></span>
+    <button class="page-btn" id="title-next" onclick="search('title', state.title.page + 1)">다음</button>
+  </div>
+
+  <h2>본문 검색</h2>
+  <div class="row">
+    <input id="content-query" placeholder="검색어 입력" />
+    <input id="content-size" type="number" min="1" max="100" value="12" style="flex:0;width:70px;" placeholder="size" />
+    <button onclick="search('content', 1)">검색</button>
+  </div>
+  <div id="content-meta" class="meta"></div>
+  <div id="content-results"></div>
+  <div class="pagination" id="content-pagination" style="display:none;">
+    <button class="page-btn" id="content-prev" onclick="search('content', state.content.page - 1)">이전</button>
+    <span id="content-page-info"></span>
+    <button class="page-btn" id="content-next" onclick="search('content', state.content.page + 1)">다음</button>
+  </div>
+
+  <script>
+    const state = {
+      title:   { page: 1, total: 0, totalPages: 1, size: 12 },
+      content: { page: 1, total: 0, totalPages: 1, size: 12 },
+    };
+
+    document.getElementById('title-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('title', 1); });
+    document.getElementById('content-query').addEventListener('keydown', e => { if (e.key === 'Enter') search('content', 1); });
+
+    async function search(type, page) {
+      const query = document.getElementById(`${type}-query`).value.trim();
+      const size = Math.max(1, parseInt(document.getElementById(`${type}-size`).value) || 12);
+      const metaEl = document.getElementById(`${type}-meta`);
+      const resultsEl = document.getElementById(`${type}-results`);
+      const paginationEl = document.getElementById(`${type}-pagination`);
+
+      if (!query) { metaEl.textContent = ''; resultsEl.innerHTML = ''; paginationEl.style.display = 'none'; return; }
+
+      metaEl.textContent = '검색 중...';
+      resultsEl.innerHTML = '';
+      paginationEl.style.display = 'none';
+
+      try {
+        const resp = await fetch(`/api/v1/events/search/${type}?query=${encodeURIComponent(query)}&page=${page}&size=${size}`);
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          metaEl.textContent = '';
+          resultsEl.innerHTML = `<div class="error">${JSON.stringify(data)}</div>`;
+          return;
+        }
+
+        const totalPages = Math.max(1, Math.ceil(data.total / size));
+        state[type].page = page;
+        state[type].total = data.total;
+        state[type].totalPages = totalPages;
+        state[type].size = size;
+
+        metaEl.textContent = `총 ${data.total}건`;
+
+        if (!data.items || data.items.length === 0) {
+          resultsEl.innerHTML = '<div class="empty">결과 없음</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = data.items.map(item => `
+          <div class="card" id="card-${type}-${item.id}">
+            <div class="card-header">
+              <div>
+                <div class="title" onclick="toggleBody('${type}', ${item.id})">${item.title}</div>
+                <div class="info">
+                  id=${item.id}
+                  ${item.eventStart ? '· ' + item.eventStart.slice(0,10) : ''}
+                  ${item.applyStart ? '· 신청 ' + item.applyStart.slice(0,10) : ''}
+                </div>
+              </div>
+              <button class="toggle-btn" onclick="toggleBody('${type}', ${item.id})">본문 보기</button>
+            </div>
+            <div class="body-content" id="body-${type}-${item.id}" style="display:none;"></div>
+          </div>
+        `).join('');
+
+        if (totalPages > 1) {
+          paginationEl.style.display = 'flex';
+          document.getElementById(`${type}-page-info`).textContent = `${page} / ${totalPages}`;
+          document.getElementById(`${type}-prev`).disabled = page <= 1;
+          document.getElementById(`${type}-next`).disabled = page >= totalPages;
+        }
+      } catch (e) {
+        metaEl.textContent = '';
+        resultsEl.innerHTML = `<div class="error">오류: ${e.message}</div>`;
+      }
+    }
+
+    const bodyCache = {};
+
+    async function toggleBody(type, id) {
+      const bodyEl = document.getElementById(`body-${type}-${id}`);
+      const btn = document.querySelector(`#card-${type}-${id} .toggle-btn`);
+
+      if (bodyEl.style.display !== 'none') {
+        bodyEl.style.display = 'none';
+        btn.textContent = '본문 보기';
+        return;
+      }
+
+      bodyEl.style.display = 'block';
+      btn.textContent = '본문 닫기';
+
+      if (bodyCache[id] !== undefined) {
+        bodyEl.innerHTML = bodyCache[id] || '<span style="color:#999">본문 없음</span>';
+        return;
+      }
+
+      bodyEl.innerHTML = '<span style="color:#999">로딩 중...</span>';
+      try {
+        const resp = await fetch(`/api/v1/events/${id}`);
+        const data = await resp.json();
+        const html = data.detail || '';
+        bodyCache[id] = html;
+        bodyEl.innerHTML = html || '<span style="color:#999">본문 없음</span>';
+      } catch (e) {
+        bodyEl.innerHTML = `<span style="color:#ef4444">로드 실패: ${e.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

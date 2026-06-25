@@ -23,6 +23,12 @@ oci:
   storage:
     bucket: hangsha-asset-dev
 
+manticore:
+  base-url: http://localhost:19308
+
+kiwi:
+  base-url: http://localhost:8090
+
 logging:  # for local debugging
   level:
     org.springframework.boot.context.config: TRACE

@@ -243,6 +243,17 @@ class EventQueryRepository(
         return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
     }
 
+    fun findVisibleByIds(ids: List<Long>): List<Event> {
+        if (ids.isEmpty()) return emptyList()
+        val sql = """
+            SELECT e.* FROM events e
+            WHERE e.id IN (:ids)
+              AND e.admin_deleted = false
+            ORDER BY COALESCE(e.event_start, e.apply_start) DESC, e.id DESC
+        """.trimIndent()
+        return jdbc.query(sql, mapOf("ids" to ids)) { rs, _ -> rs.toEvent() }
+    }
+
     fun countByTitleContains(query: String, userId: Long?): Int {
         val sql = buildString {
             append(

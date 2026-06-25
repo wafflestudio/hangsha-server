@@ -8,6 +8,7 @@ import com.team1.hangsha.event.dto.request.EventCreateRequest
 import com.team1.hangsha.event.dto.request.EventOverrideUpdateRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
+import com.team1.hangsha.search.ManticoreIndexService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -26,6 +27,7 @@ class EventSyncController(
     private val eventSyncService: EventSyncService,
     private val eventRepository: EventRepository,
     private val objectMapper: ObjectMapper,
+    private val manticoreIndexService: ManticoreIndexService,
 ) {
     @PostMapping("/sync")
     fun sync(
@@ -92,6 +94,10 @@ class EventSyncController(
     @DeleteMapping("/delete")
     fun deleteAll(): Map<String, Any> {
         val deleted = eventRepository.deleteAllEventsRaw()
+        // Manticore는 별도 시스템이라 MySQL과 동일 트랜잭션으로 묶을 수 없음.
+        // admin 전용 비상 연산이므로 dual-write를 감수하고 편의성 우선.
+        // Manticore 불일치 발생 시 POST /api/v1/admin/search/reindex 로 수동 복구 가능.
+        manticoreIndexService.reindexAll()
         return mapOf("ok" to true, "deleted" to deleted)
     }
 

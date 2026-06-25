@@ -6,6 +6,7 @@ import com.team1.hangsha.com.team1.hangsha.config.JacksonConfig
 import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.config.OciConfig
 import com.team1.hangsha.event.service.EventSyncService
+import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.Import
     DatabaseConfig::class,
     JacksonConfig::class,
     EventSyncService::class,
+    EventSearchOutboxWriter::class,
     TestValueLogger::class,
     OciConfig::class,
     OciUploadService::class,
