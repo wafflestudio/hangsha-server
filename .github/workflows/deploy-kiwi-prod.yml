@@ -1,0 +1,34 @@
+name: Deploy-kiwi-prod
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'kiwi-service/**'
+
+jobs:
+  deploy:
+    name: Build and Push
+    runs-on: ubuntu-24.04-arm
+
+    env:
+      IMAGE_TAG: ${{ github.run_number }}
+      OCIR_REGISTRY: yny.ocir.io
+      OCIR_NAMESPACE: ax1dvc8vmenm
+      OCIR_USERNAME: ax1dvc8vmenm/members/waffle-deployer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to OCIR
+        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login $OCIR_REGISTRY -u $OCIR_USERNAME --password-stdin
+
+      - name: Docker build, tag, and push
+        run: |
+          docker build \
+            -f kiwi-service/Dockerfile \
+            -t $OCIR_REGISTRY/$OCIR_NAMESPACE/hangsha-prod/hangsha-kiwi:$IMAGE_TAG \
+            kiwi-service/ \
+            --platform linux/arm64
+          docker push $OCIR_REGISTRY/$OCIR_NAMESPACE/hangsha-prod/hangsha-kiwi:$IMAGE_TAG
