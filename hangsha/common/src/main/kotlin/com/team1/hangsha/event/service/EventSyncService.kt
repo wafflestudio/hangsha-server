@@ -38,6 +38,9 @@ class EventSyncService(
 
     data class SyncResult(val total: Int, val upserted: Int, val skipped: Int)
 
+    /**
+     * 한 TX에서 event에 대한 upsert와 outbox에 대한 이벤트 기록을 원자적으로 수행한다.
+     */
     @Transactional
     fun sync(events: List<CrawledProgramEvent>): SyncResult {
         val statusGroupId = requireGroupId("모집현황")

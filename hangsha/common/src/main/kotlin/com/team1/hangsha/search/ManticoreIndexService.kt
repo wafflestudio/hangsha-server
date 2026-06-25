@@ -11,6 +11,10 @@ import org.springframework.web.client.RestClient
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
+/**
+ * manticoreClient, kiwiTokenizerClient를 이용하여 ManticoreIndexService를 구현한다.
+ * outboxWorker가 이를 사용한다. 그 밖에 outbox패턴이 아닌 reindexing/delete등의 특수 연산의 경우에만 직접 호출된다.
+ */
 @Service
 class ManticoreIndexService(
     private val manticoreClient: ManticoreClient,
@@ -23,6 +27,10 @@ class ManticoreIndexService(
     private val restClient by lazy { RestClient.create(baseUrl) }
 
     fun indexEvent(event: Event) {
+        /**
+         * 1. title, content를 tokenize한다.
+         * 2. manticoreClient를 이용하여 인덱스 upsert한다.
+         */
         val tokenizedTitle = kiwiTokenizerClient.tokenize(event.title)
         val rawContent = event.mainContentHtml?.let { Jsoup.parse(it).text() } ?: ""
         val tokenizedContent = if (rawContent.isBlank()) "" else kiwiTokenizerClient.tokenize(rawContent)
@@ -42,6 +50,11 @@ class ManticoreIndexService(
     }
 
     fun reindexAll(): Map<String, Any> {
+
+        /*
+        * truncate를 우선 한다.
+        * */
+
         val sql = "TRUNCATE TABLE $indexName"
         val encoded = URLEncoder.encode(sql, StandardCharsets.UTF_8)
         restClient.post()
@@ -52,6 +65,9 @@ class ManticoreIndexService(
             .toBodilessEntity()
         log.info("Truncated $indexName for full reindex")
 
+        /**
+         * 모든 event에 대해서 index()호출하여 인덱싱한다.
+         */
         var indexed = 0
         var failed = 0
         eventRepository.findAll()

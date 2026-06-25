@@ -2,16 +2,25 @@ package com.team1.hangsha.search
 
 import org.springframework.stereotype.Service
 
+/**
+ * manticoreClient, kiwiTokenizerClient를 이용하여 searchService를 구현한다.
+ * EventService의 searchTitle, searchContent에서 이를 사용한다.
+ */
 @Service
 class ManticoreSearchService(
     private val manticoreClient: ManticoreClient,
     private val kiwiTokenizerClient: KiwiTokenizerClient,
 ) {
-    private val indexName = "events_search"
+    private val indexName = "events_search" // table-name
 
     data class SearchResult(val eventIds: List<Long>, val total: Int)
 
     fun searchByTitle(query: String): SearchResult {
+        /*
+        * search-path
+        * 1. kiwiTokenizerClient로 토크나이징 한다.
+        * 2. tokenizedString을 doSearch로 넘긴다. 이는 manti
+        * */
         val tokenized = kiwiTokenizerClient.tokenize(query)
         return doSearch(field = "title", tokenizedQuery = tokenized)
     }
