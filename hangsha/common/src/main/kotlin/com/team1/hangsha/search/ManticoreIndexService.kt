@@ -27,11 +27,9 @@ class ManticoreIndexService(
     private val restClient by lazy { RestClient.create(baseUrl) }
 
     fun indexEvent(event: Event) {
-        /**
-         * 1. title, content를 tokenize한다.
-         * 2. manticoreClient를 이용하여 인덱스 upsert한다.
-         */
-        val tokenizedTitle = kiwiTokenizerClient.tokenize(event.title)
+        val rawTitle = event.title
+        val tokenizedTitle = kiwiTokenizerClient.tokenize(rawTitle)
+
         val rawContent = event.mainContentHtml?.let { Jsoup.parse(it).text() } ?: ""
         val tokenizedContent = if (rawContent.isBlank()) "" else kiwiTokenizerClient.tokenize(rawContent)
 
@@ -39,8 +37,10 @@ class ManticoreIndexService(
             index = indexName,
             id = requireNotNull(event.id) { "Event id must not be null" },
             doc = mapOf(
-                "title" to tokenizedTitle,
-                "content" to tokenizedContent,
+                "title_tokens"   to tokenizedTitle,
+                "content_tokens" to tokenizedContent,
+                "title_raw"      to rawTitle,
+                "content_raw"    to rawContent,
             )
         )
     }
