@@ -4,6 +4,8 @@ package com.team1.hangsha.event.dto.core
 
 data class CrawledProgramEvent(
     val dataSeq: String? = null,
+    val sourceUrl: String? = null,
+    val applyLink: String? = null,
     val majorTypes: List<String> = emptyList(), // [org, eventType]
     val title: String? = null,
     val status: String? = null,

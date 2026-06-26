@@ -5,12 +5,18 @@ import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
 import com.team1.hangsha.common.upload.OciUploadService
+import com.team1.hangsha.config.DatabaseConfig
+import com.team1.hangsha.config.OciConfig
+import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Import
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,6 +24,7 @@ import java.time.LocalDate
 import kotlin.system.exitProcess
 
 @Component
+@ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
 class ExtraSnuSyncRunner(
     private val eventSyncService: EventSyncService,
     private val ociUploadService: OciUploadService,
@@ -25,6 +32,11 @@ class ExtraSnuSyncRunner(
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
+        val job = args.getOptionValues("job")?.firstOrNull()
+        if (job != null && job != "extra-snu-sync") {
+            return
+        }
+
         val opt = BatchArgs.from(args)
 
         val applyChkCodes = listOf("0001", "0002", "0003", "0004")
@@ -156,11 +168,24 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
     )
 }
 
+@Configuration
+@ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
+@Import(
+    DatabaseConfig::class,
+    EventSyncService::class,
+    TestValueLogger::class,
+    OciConfig::class,
+    OciUploadService::class,
+)
+class ExtraSnuSyncConfiguration
+
 private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
     val isPeriodEvent = isPeriodEventFromList()
 
     return CrawledProgramEvent(
         dataSeq = dataSeq,
+        sourceUrl = dataSeq?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" },
+        applyLink = dataSeq?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" },
         majorTypes = majorTypes,
         title = title,
         status = status,
