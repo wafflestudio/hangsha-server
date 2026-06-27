@@ -112,7 +112,11 @@ class UserService(
             maxAgeSeconds = refreshExpirationMs / 1000
         )
 
-        return IssuedTokens(accessToken = access, refreshCookie = cookie)
+        return IssuedTokens(
+            accessToken = access,
+            refreshCookie = cookie,
+            refreshToken = refresh
+        )
     }
 
     @Transactional
@@ -130,7 +134,11 @@ class UserService(
             maxAgeSeconds = refreshExpirationMs / 1000
         )
 
-        return IssuedTokens(accessToken = access, refreshCookie = cookie)
+        return IssuedTokens(
+            accessToken = access,
+            refreshCookie = cookie,
+            refreshToken = refresh
+        )
     }
 
     @Transactional
@@ -188,7 +196,11 @@ class UserService(
             maxAgeSeconds = refreshExpirationMs / 1000
         )
 
-        return IssuedTokens(accessToken = newAccess, refreshCookie = cookie)
+        return IssuedTokens(
+            accessToken = newAccess,
+            refreshCookie = cookie,
+            refreshToken = newRefresh
+        )
     }
 
     @Transactional

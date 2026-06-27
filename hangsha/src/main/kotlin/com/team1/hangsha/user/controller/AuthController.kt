@@ -20,6 +20,8 @@ import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import com.team1.hangsha.user.dto.AndroidRefreshRequest
+import com.team1.hangsha.user.dto.AndroidTokenResponse
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -86,5 +88,31 @@ class AuthController(
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, cookieSupport.clearRefreshCookie().toString())
             .build()
+    }
+
+    @PostMapping("/android/login")
+    fun androidLocalLogin(@RequestBody req: LoginRequest): ResponseEntity<AndroidTokenResponse> {
+        val issued = userService.issueAfterLocalLogin(req.email, req.password)
+
+        return ResponseEntity.ok(
+            AndroidTokenResponse(
+                accessToken = issued.accessToken,
+                refreshToken = issued.refreshToken
+            )
+        )
+    }
+
+    @PostMapping("/android/refresh")
+    fun androidRefresh(@RequestBody req: AndroidRefreshRequest): ResponseEntity<AndroidTokenResponse> {
+        if (req.refreshToken.isBlank()) throw DomainException(ErrorCode.AUTH_UNAUTHORIZED)
+
+        val issued = userService.rotateAndIssueAccessToken(req.refreshToken)
+
+        return ResponseEntity.ok(
+            AndroidTokenResponse(
+                accessToken = issued.accessToken,
+                refreshToken = issued.refreshToken
+            )
+        )
     }
 }
