@@ -8,12 +8,17 @@ import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
 import com.team1.hangsha.event.dto.response.EventCountResponse
 import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
+import com.team1.hangsha.event.dto.response.SearchEventItem
+import com.team1.hangsha.event.dto.response.SearchEventResponse
+import com.team1.hangsha.event.dto.response.SearchHighlight
 import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventQueryRepository
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.search.ManticoreSearchService
+import com.team1.hangsha.search.SearchHighlighter
 import com.team1.hangsha.user.repository.UserInterestCategoryRepository
+import org.jsoup.Jsoup
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -228,6 +233,58 @@ class EventService(
         val result = manticoreSearchService.searchByContent(q)
         // TODO: 제외 키워드 필터 적용 여부 결정 필요
         return buildSearchResponse(result, page, size, userId)
+    }
+
+    fun search(
+        query: String,
+        page: Int,
+        size: Int,
+        userId: Long?,
+    ): SearchEventResponse {
+        val q = query.trim()
+        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
+
+        val result = manticoreSearchService.searchUnified(q)
+
+        val safePage = max(1, page)
+        val safeSize = max(1, size)
+        val offset = (safePage - 1) * safeSize
+
+        val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
+        val events = allEvents.drop(offset).take(safeSize)
+
+        val auth = userId != null
+        val interestPriorityByCategoryId = loadInterestMap(userId)
+        val bookmarkedIds: Set<Long> =
+            if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
+                userId!!, events.mapNotNull { it.id }
+            ) else emptySet()
+
+        val items = events.map { e ->
+            val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
+            val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
+            val rawContent = e.mainContentHtml?.let { Jsoup.parse(it).text() }
+
+            SearchEventItem(
+                event = e.toDto(auth, matchedPriority, isBookmarked),
+                highlight = SearchHighlight(
+                    title = SearchHighlighter.highlightWithFallback(
+                        text = e.title,
+                        primary = result.rawWords,
+                        fallback = result.kiwiTokens,
+                    ),
+                    contentSnippet = rawContent?.let {
+                        SearchHighlighter.extractSnippetWithFallback(
+                            content = it,
+                            primary = result.rawWords,
+                            fallback = result.kiwiTokens,
+                        )
+                    },
+                ),
+            )
+        }
+
+        return SearchEventResponse(page = safePage, size = safeSize, total = result.total, items = items)
     }
 
     private fun buildSearchResponse(

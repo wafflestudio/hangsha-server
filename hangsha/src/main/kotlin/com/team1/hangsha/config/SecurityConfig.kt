@@ -69,6 +69,9 @@ class SecurityConfig(
                         // 주최 기관
                         "/api/v1/category-groups/**",
                         "/api/v1/categories/**",
+                        // 테스트 페이지 / 로컬 편의
+                        "/hangsha-search-test.html",
+                        "/api/v1/admin/search/reindex",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
