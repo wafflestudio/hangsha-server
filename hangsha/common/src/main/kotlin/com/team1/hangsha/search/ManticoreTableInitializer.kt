@@ -19,16 +19,15 @@ class ManticoreTableInitializer(
     @PostConstruct
     fun init() {
         try {
-            sqlRaw("DROP TABLE IF EXISTS events_search")
             sqlRaw("""
-                CREATE TABLE events_search(
+                CREATE TABLE IF NOT EXISTS events_search(
                     title_tokens   TEXT,
                     content_tokens TEXT,
                     title_raw      TEXT,
                     content_raw    TEXT
                 ) min_infix_len='2' charset_table='non_cjk, U+AC00..U+D7AF, U+1100..U+11FF, U+3130..U+318F'
             """.trimIndent())
-            log.info("Manticore events_search table (re)created with 4-field schema")
+            log.info("Manticore events_search table ensured")
         } catch (e: Exception) {
             log.warn("Manticore table init failed: ${e.message}")
         }
