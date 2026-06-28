@@ -84,6 +84,12 @@ springdoc:
 upload:
   max-size-bytes: 10485760
 
+search:
+  reindex:
+    enabled: true
+    cron: "0 0 */3 * * *"
+    zone: Asia/Seoul
+
 # TODO: 프로퍼티 정상 주입 확인 목적. 배포 완료 시 내리기.
 logging:
   level:
