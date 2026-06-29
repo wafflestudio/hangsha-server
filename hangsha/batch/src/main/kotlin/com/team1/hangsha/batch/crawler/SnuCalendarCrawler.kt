@@ -69,7 +69,9 @@ class SnuCalendarCrawler(
                 } else {
                     parseDetailHtml(detailHtml, item, detailUrl)
                 }
-                result += event
+                if (event != null) {
+                    result += event
+                }
 
                 if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
             }
@@ -106,30 +108,40 @@ class SnuCalendarCrawler(
         return ParsedListPage(hasNoResultsMessage = false, items = items)
     }
 
-    fun parseDetailHtml(html: String, listItem: ListItem, sourceUrl: String): CrawledProgramEvent {
+    fun parseDetailHtml(html: String, listItem: ListItem, sourceUrl: String): CrawledProgramEvent? {
         val doc = Jsoup.parse(html, sourceUrl)
         val content = doc.selectFirst(".board-view .content") ?: doc.selectFirst(".view .content")
         val contentHtml = content?.html()?.trim()?.takeIf { it.isNotBlank() }
         val contentText = content?.text()?.normalize().orEmpty()
+        if (contentText.contains("비교과")) {
+            if (debug) println("[SNU-CALENDAR] skip duplicate extra-snu candidate url=$sourceUrl")
+            return null
+        }
+        val contentLines = extractContentLines(content)
 
         val title = doc.selectFirst(".board-view .header .title")?.text()?.normalize()
             ?: doc.selectFirst("meta[property=og:title]")?.attr("content")?.substringBefore(" - ")?.normalize()
             ?: listItem.title
-        val listPeriod = parseDotRangeToYmd(
+        val listPeriod = parseListDateRange(
             doc.selectFirst(".board-view .header .date")?.text()?.normalize() ?: listItem.dateText
         )
-        val detailDateTime = parseBestEventDateTime(contentText)
-        val applyEnd = parseApplyEnd(contentText)
-        val location = parseLocation(contentText)
+        val isRecruitingPost = Regex("""모집|신청""").containsMatchIn(contentText)
+        val listRangeIsApplyPeriod = listPeriod.isRange && isRecruitingPost
+        val detailDateTime = if (listRangeIsApplyPeriod) {
+            null
+        } else {
+            parseBestEventDateTime(contentLines, listPeriod.start)
+        }
+        val location = parseLocation(contentLines)
         val externalApplyLink = extractExternalApplyLink(doc)
         val imageUrl = extractImageUrl(doc) ?: listItem.imageUrl
         val attachments = extractAttachmentLinks(doc)
-        val tags = buildList {
-            if (attachments.isNotEmpty()) add("attachments:${attachments.size}")
-        }
+        val tags = emptyList<String>()
 
-        val activityStart = detailDateTime?.date ?: listPeriod.first
-        val activityEnd = detailDateTime?.date ?: listPeriod.second
+        val applyStart = if (listRangeIsApplyPeriod) listPeriod.start else null
+        val applyEnd = if (listRangeIsApplyPeriod) listPeriod.end else null
+        val activityStart = if (listRangeIsApplyPeriod) null else detailDateTime?.startDate ?: listPeriod.start
+        val activityEnd = if (listRangeIsApplyPeriod) null else detailDateTime?.endDate ?: listPeriod.end
         val session = if (activityStart != null || detailDateTime?.startTime != null || location != null) {
             CrawledDetailSession(
                 round = 1,
@@ -147,14 +159,13 @@ class SnuCalendarCrawler(
             ?.let { appendLinkSummary(it, externalApplyLink, attachments) }
 
         return CrawledProgramEvent(
-            dataSeq = "snu-calendar:${listItem.bbsidx}",
-            sourceUrl = sourceUrl,
+            dataSeq = listItem.bbsidx,
             applyLink = externalApplyLink ?: sourceUrl,
-            majorTypes = listOf("서울대학교"),
+            majorTypes = listOf("SNU 캘린더"),
             title = title,
-            status = null,
+            status = "상태 미제공",
             operationMode = null,
-            applyStart = null,
+            applyStart = applyStart,
             applyEnd = applyEnd,
             activityStart = activityStart,
             activityEnd = activityEnd,
@@ -207,15 +218,15 @@ class SnuCalendarCrawler(
     }
 
     private fun ListItem.toFallbackEvent(sourceUrl: String): CrawledProgramEvent {
-        val (start, end) = parseDotRangeToYmd(dateText)
+        val period = parseListDateRange(dateText)
         return CrawledProgramEvent(
-            dataSeq = "snu-calendar:$bbsidx",
-            sourceUrl = sourceUrl,
+            dataSeq = bbsidx,
             applyLink = sourceUrl,
-            majorTypes = listOf("서울대학교"),
+            majorTypes = listOf("SNU 캘린더"),
             title = title,
-            activityStart = start,
-            activityEnd = end,
+            status = "상태 미제공",
+            activityStart = period.start,
+            activityEnd = period.end,
             imageUrl = imageUrl,
             isPeriodEvent = false,
         )
@@ -278,40 +289,50 @@ class SnuCalendarCrawler(
         return "$html\n$extra"
     }
 
-    private fun parseLocation(text: String): String? {
-        val m = Regex("""(?:장소|위치)\s*[:：]\s*([^·\n\r]+?)(?=\s+(?:대상|제공|신청|일정|문의|상세|$))""")
-            .find(text)
-        return m?.groupValues?.get(1)?.normalize()?.takeIf { it.isNotBlank() }
+    private fun extractContentLines(content: Element?): List<String> {
+        val html = content?.html() ?: return emptyList()
+        return html
+            .replace(Regex("""(?i)<br\s*/?>"""), "\n")
+            .replace(Regex("""(?i)</(p|div|li|tr|h[1-6])>"""), "\n")
+            .lines()
+            .map { Jsoup.parse(it).text().normalize() }
+            .filter { it.isNotBlank() }
     }
 
-    private fun parseApplyEnd(text: String): String? {
-        val marker = Regex("""신청\s*마감\s*[:：]?\s*""").find(text) ?: return null
-        val tail = text.substring(marker.range.last + 1).take(80)
-        return parseKoreanDate(tail)?.date
-    }
-
-    private fun parseBestEventDateTime(text: String): ParsedDateTime? {
-        val marker = Regex("""(?:일정|일시|행사\s*일시)\s*[:：]?\s*""").find(text)
-        if (marker != null) {
-            val tail = text.substring(marker.range.last + 1).take(120)
-            parseKoreanDate(tail)?.let { return it }
+    private fun parseLocation(lines: List<String>): String? {
+        lines.forEach { line ->
+            if (!line.contains("장소")) return@forEach
+            parseLocationFromLine(line)?.let { return it }
         }
-        return Regex("""20\d{2}년\s*\d{1,2}월\s*\d{1,2}일.{0,40}""")
-            .findAll(text)
-            .mapNotNull { parseKoreanDate(it.value) }
-            .firstOrNull { it.startTime != null }
+        return null
     }
 
-    private fun parseKoreanDate(raw: String): ParsedDateTime? {
-        val dateMatch = Regex("""(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일""").find(raw) ?: return null
-        val y = dateMatch.groupValues[1].toInt()
-        val m = dateMatch.groupValues[2].toInt()
-        val d = dateMatch.groupValues[3].toInt()
-        val date = runCatching { LocalDate.of(y, m, d).toString() }.getOrNull() ?: return null
-        val tail = raw.substring(dateMatch.range.last + 1).take(80)
-        val timeRange = parseTimeRange(tail)
+    private fun parseLocationFromLine(line: String): String? {
+        val m = Regex("""장소\s*[:：]?\s*(.+)$""").find(line) ?: return null
+        return m.groupValues[1].normalize().takeIf { it.isNotBlank() }
+    }
+
+    private fun parseBestEventDateTime(lines: List<String>, fallbackDate: String?): ParsedDateTime? {
+        val defaultDate = fallbackDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        lines.forEachIndexed { index, line ->
+            if (!Regex("""시간|기간|일시|일정""").containsMatchIn(line)) return@forEachIndexed
+            val candidate = listOfNotNull(line, lines.getOrNull(index + 1))
+                .joinToString(" ")
+                .normalize()
+            parseDateTimeRange(candidate, defaultDate)?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseDateTimeRange(raw: String, fallbackDate: LocalDate?): ParsedDateTime? {
+        val dates = extractDates(raw, fallbackDate)
+        if (dates.isEmpty()) return null
+        val startDate = dates.first()
+        val endDate = normalizeEndDate(startDate, dates.getOrNull(1), hasExplicitEndYear(raw)) ?: startDate
+        val timeRange = parseTimeRange(raw)
         return ParsedDateTime(
-            date = date,
+            startDate = startDate.toString(),
+            endDate = endDate.toString(),
             startTime = timeRange?.first,
             endTime = timeRange?.second,
         )
@@ -350,23 +371,61 @@ class SnuCalendarCrawler(
         return "%02d:%02d".format(hour, minute)
     }
 
-    private fun parseDotRangeToYmd(raw: String?): Pair<String?, String?> {
-        val dates = Regex("""(20\d{2})\.(\d{1,2})\.(\d{1,2})\.?""")
-            .findAll(raw.orEmpty())
-            .mapNotNull {
-                val y = it.groupValues[1].toInt()
-                val m = it.groupValues[2].toInt()
-                val d = it.groupValues[3].toInt()
-                runCatching { LocalDate.of(y, m, d).toString() }.getOrNull()
+    private fun parseListDateRange(raw: String?): ParsedListPeriod {
+        val dates = extractDates(raw.orEmpty(), fallbackDate = null)
+        val start = dates.firstOrNull()
+        val end = normalizeEndDate(start, dates.getOrNull(1), hasExplicitEndYear(raw.orEmpty())) ?: start
+        return ParsedListPeriod(
+            start = start?.toString(),
+            end = end?.toString(),
+            isRange = raw.orEmpty().contains("~") && start != null && end != null && start != end,
+        )
+    }
+
+    private fun extractDates(raw: String, fallbackDate: LocalDate?): List<LocalDate> {
+        val defaultYear = fallbackDate?.year ?: LocalDate.now().year
+        var previousMonth = fallbackDate?.monthValue
+        val currentMonth = LocalDate.now().monthValue
+
+        return dateTokenRegex.findAll(raw)
+            .mapNotNull { match ->
+                val yearGroup = match.groups["year"]?.value ?: match.groups["dotYear"]?.value
+                val monthGroup = match.groups["month"]?.value ?: match.groups["dotMonth"]?.value
+                val dayGroup = match.groups["day"]?.value ?: match.groups["dotDay"]?.value ?: return@mapNotNull null
+
+                val month = monthGroup?.toIntOrNull() ?: previousMonth ?: fallbackDate?.monthValue ?: return@mapNotNull null
+                val explicitYear = yearGroup?.toIntOrNull()
+                val year = explicitYear ?: inferYear(defaultYear, currentMonth, month)
+                val day = dayGroup.toIntOrNull() ?: return@mapNotNull null
+                previousMonth = month
+
+                runCatching { LocalDate.of(year, month, day) }.getOrNull()
             }
             .toList()
-        return dates.firstOrNull() to (dates.getOrNull(1) ?: dates.firstOrNull())
+    }
+
+    private fun inferYear(defaultYear: Int, currentMonth: Int, parsedMonth: Int): Int =
+        if (currentMonth == 12 && parsedMonth == 1) defaultYear + 1 else defaultYear
+
+    private fun normalizeEndDate(start: LocalDate?, end: LocalDate?, hasExplicitEndYear: Boolean): LocalDate? {
+        if (start == null || end == null) return end
+        if (end >= start || hasExplicitEndYear) return end
+        return runCatching { end.plusYears(1) }.getOrNull() ?: end
+    }
+
+    private fun hasExplicitEndYear(raw: String): Boolean {
+        val years = Regex("""20\d{2}""").findAll(raw).toList()
+        return years.size >= 2
     }
 
     private fun String.normalize(): String =
         replace("\u00a0", " ")
             .replace(Regex("""\s+"""), " ")
             .trim()
+
+    private val dateTokenRegex = Regex(
+        pattern = """(?:(?<year>20\d{2})\s*년\s*)?(?:(?<month>\d{1,2})\s*월\s*)?(?<day>\d{1,2})\s*일|(?:(?<dotYear>20\d{2})\s*[.]\s*)?(?<dotMonth>\d{1,2})\s*[./]\s*(?<dotDay>\d{1,2})\s*[.]?"""
+    )
 
     data class CrawlOptions(
         val startPage: Int,
@@ -390,8 +449,15 @@ class SnuCalendarCrawler(
     )
 
     private data class ParsedDateTime(
-        val date: String,
+        val startDate: String,
+        val endDate: String?,
         val startTime: String?,
         val endTime: String?,
+    )
+
+    private data class ParsedListPeriod(
+        val start: String?,
+        val end: String?,
+        val isRange: Boolean,
     )
 }

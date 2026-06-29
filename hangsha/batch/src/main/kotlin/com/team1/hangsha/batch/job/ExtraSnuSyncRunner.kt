@@ -184,7 +184,6 @@ private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
 
     return CrawledProgramEvent(
         dataSeq = dataSeq,
-        sourceUrl = dataSeq?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" },
         applyLink = dataSeq?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" },
         majorTypes = majorTypes,
         title = title,
