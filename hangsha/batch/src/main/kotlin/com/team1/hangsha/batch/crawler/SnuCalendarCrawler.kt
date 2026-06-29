@@ -173,7 +173,7 @@ class SnuCalendarCrawler(
             imageUrl = imageUrl,
             tags = tags,
             mainContentHtml = enrichedHtml,
-            isPeriodEvent = false,
+            isPeriodEvent = applyStart != null,
             detailSessions = listOfNotNull(session),
         )
     }
