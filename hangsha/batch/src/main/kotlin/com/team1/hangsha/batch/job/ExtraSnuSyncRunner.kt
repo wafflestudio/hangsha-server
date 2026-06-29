@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
+import com.team1.hangsha.batch.crawler.SnuCalendarCrawler
 import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.config.DatabaseConfig
 import com.team1.hangsha.config.OciConfig
@@ -94,6 +95,36 @@ class ExtraSnuSyncRunner(
             }
         }
 
+        if (opt.withSnuCalendar) {
+            val snuCalendarEvents = SnuCalendarCrawler(
+                delayMsBetweenPages = opt.delayMs,
+                delayMsBetweenDetails = opt.detailDelayMs,
+            ).crawl(
+                SnuCalendarCrawler.CrawlOptions(
+                    startPage = opt.snuCalendarStartPage,
+                    maxPages = opt.snuCalendarMaxPages,
+                )
+            )
+
+            if (opt.outFile != null) {
+                dumpBuffer += snuCalendarEvents
+            }
+
+            totalCrawled += snuCalendarEvents.size
+            if (opt.dumpOnly) {
+                println("SNU calendar crawled: total=${snuCalendarEvents.size}")
+            } else {
+                val result = eventSyncService.sync(snuCalendarEvents)
+                totalUpserted += result.upserted
+                totalSkipped += result.skipped
+
+                println(
+                    "SNU calendar synced: upserted=${result.upserted}, " +
+                            "total=${result.total}, skipped=${result.skipped}"
+                )
+            }
+        }
+
         if (opt.outFile != null) {
             writeDumpFile(opt.outFile, dumpBuffer)
             println("Saved crawled events to ${opt.outFile} (count=${dumpBuffer.size})")
@@ -127,6 +158,9 @@ private data class BatchArgs(
     val detailDelayMs: Long = 100,
     val outFile: String? = null,
     val dumpOnly: Boolean = false,
+    val withSnuCalendar: Boolean = true,
+    val snuCalendarStartPage: Int = 1,
+    val snuCalendarMaxPages: Int = 4,
 ) {
     companion object {
         fun from(args: ApplicationArguments): BatchArgs {
@@ -146,6 +180,9 @@ private data class BatchArgs(
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
                 outFile = single("outFile"),
                 dumpOnly = args.containsOption("dumpOnly"),
+                withSnuCalendar = !args.containsOption("noSnuCalendar"),
+                snuCalendarStartPage = single("snuCalendarStartPage")?.toInt() ?: 1,
+                snuCalendarMaxPages = single("snuCalendarMaxPages")?.toInt() ?: 4,
             )
         }
     }

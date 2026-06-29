@@ -133,7 +133,6 @@ class SnuCalendarCrawler(
             parseBestEventDateTime(contentLines, listPeriod.start)
         }
         val location = parseLocation(contentLines)
-        val externalApplyLink = extractExternalApplyLink(doc)
         val imageUrl = extractImageUrl(doc) ?: listItem.imageUrl
         val attachments = extractAttachmentLinks(doc)
         val tags = emptyList<String>()
@@ -156,11 +155,11 @@ class SnuCalendarCrawler(
         }
 
         val enrichedHtml = contentHtml
-            ?.let { appendLinkSummary(it, externalApplyLink, attachments) }
+            ?.let { appendLinkSummary(it, attachments) }
 
         return CrawledProgramEvent(
             dataSeq = listItem.bbsidx,
-            applyLink = externalApplyLink ?: sourceUrl,
+            applyLink = sourceUrl,
             majorTypes = listOf("SNU 캘린더"),
             title = title,
             status = "상태 미제공",
@@ -249,38 +248,15 @@ class SnuCalendarCrawler(
         }
     }
 
-    private fun extractExternalApplyLink(doc: Document): String? {
-        val anchors = doc.select(".board-view .content a[href]")
-        val formLink = anchors.firstOrNull { a ->
-            val href = a.absUrl("href")
-            href.contains("forms.gle") || href.contains("docs.google.com/forms")
-        }?.absUrl("href")?.takeIf { it.isNotBlank() }
-        if (formLink != null) return formLink
-
-        return anchors.firstOrNull { a ->
-            val nearby = buildString {
-                append(a.text())
-                append(" ")
-                append(a.parent()?.ownText().orEmpty())
-                append(" ")
-                append(a.previousSibling()?.toString().orEmpty().takeLast(40))
-            }.normalize()
-            nearby.contains("신청")
-        }?.absUrl("href")?.takeIf { it.isNotBlank() }
-    }
-
     private fun extractAttachmentLinks(doc: Document): List<String> =
         doc.select(".download a[href]")
             .mapNotNull { it.absUrl("href").takeIf { href -> href.isNotBlank() } }
             .distinct()
 
-    private fun appendLinkSummary(html: String, applyLink: String?, attachments: List<String>): String {
-        if (applyLink == null && attachments.isEmpty()) return html
+    private fun appendLinkSummary(html: String, attachments: List<String>): String {
+        if (attachments.isEmpty()) return html
         val extra = buildString {
             append("""<div class="snu-calendar-links">""")
-            if (applyLink != null) {
-                append("""<p><strong>신청 링크:</strong> <a href="$applyLink">$applyLink</a></p>""")
-            }
             attachments.forEach { link ->
                 append("""<p><strong>첨부 링크:</strong> <a href="$link">$link</a></p>""")
             }
