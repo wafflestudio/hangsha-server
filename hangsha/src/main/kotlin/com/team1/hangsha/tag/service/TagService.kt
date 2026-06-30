@@ -21,6 +21,8 @@ class TagService(
 
     @Transactional
     fun createTag(userId: Long, req: CreateTagRequest): CreateTagResponse {
+        validateTagName(req.name)
+
         // 해당 유저에게 이미 같은 이름의 태그가 있는지 확인
         if (tagRepository.findByUserIdAndName(userId, req.name).isPresent) {
             throw DomainException(ErrorCode.TAG_ALREADY_EXISTS)
@@ -33,6 +35,8 @@ class TagService(
     // 태그 이름 변경 (전역 변경)
     @Transactional
     fun updateTag(userId: Long, tagId: Long, req: UpdateTagRequest): UpdateTagResponse {
+        validateTagName(req.name)
+
         val tag = tagRepository.findById(tagId)
             .orElseThrow { DomainException(ErrorCode.TAG_NOT_FOUND) }
 
@@ -60,5 +64,11 @@ class TagService(
         }
 
         tagRepository.delete(tag)
+    }
+
+    private fun validateTagName(name: String) {
+        if (name.isBlank()) {
+            throw DomainException(ErrorCode.TAG_NAME_CANNOT_BE_BLANK)
+        }
     }
 }
