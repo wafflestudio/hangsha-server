@@ -8,3 +8,7 @@ data class AndroidTokenResponse(
     val accessToken: String,
     val refreshToken: String
 )
+
+data class AndroidLogoutRequest(
+    val refreshToken: String
+)
