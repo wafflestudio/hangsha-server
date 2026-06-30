@@ -2,6 +2,8 @@ package com.team1.hangsha.batch
 
 import com.team1.hangsha.com.team1.hangsha.config.JacksonConfig
 import com.team1.hangsha.common.upload.OciUploadService
+import com.team1.hangsha.config.OciConfig
+import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.event.service.EventSyncService
 import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.boot.WebApplicationType
