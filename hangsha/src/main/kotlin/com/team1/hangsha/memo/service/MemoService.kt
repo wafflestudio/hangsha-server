@@ -131,6 +131,18 @@ class MemoService(
     }
 
     @Transactional(readOnly = true)
+    fun getMyMemoByEventId(userId: Long, eventId: Long): MemoResponse {
+        val memo = memoRepository.findByUserIdAndEventId(userId, eventId)
+            .orElseThrow { DomainException(ErrorCode.MEMO_NOT_FOUND) }
+
+        val eventTitle = eventRepository.findById(memo.eventId)
+            .map { it.title }
+            .orElse("Unknown Event")
+
+        return mapToMemoResponse(memo, eventTitle)
+    }
+
+    @Transactional(readOnly = true)
     fun findMemosByTagId(userId: Long, tagId: Long): List<MemoResponse> {
         val tag = tagRepository.findById(tagId).orElseThrow { DomainException(ErrorCode.TAG_NOT_FOUND) }
         if (tag.userId != userId) throw DomainException(ErrorCode.TAG_NOT_FOUND)

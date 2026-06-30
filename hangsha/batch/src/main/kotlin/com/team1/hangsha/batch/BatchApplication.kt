@@ -1,6 +1,9 @@
 package com.team1.hangsha.batch
 
 import com.team1.hangsha.com.team1.hangsha.config.JacksonConfig
+import com.team1.hangsha.common.upload.OciUploadService
+import com.team1.hangsha.event.service.EventSyncService
+import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.data.jdbc.JdbcRepositoriesAutoConfiguration
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
@@ -13,6 +16,11 @@ import org.springframework.context.annotation.Import
 @SpringBootApplication
 @Import(
     JacksonConfig::class,
+    EventSyncService::class,
+    EventSearchOutboxWriter::class,
+    TestValueLogger::class,
+    OciConfig::class,
+    OciUploadService::class,
 ) // for explicit bean import
 class BatchApplication
 

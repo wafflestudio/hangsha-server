@@ -38,6 +38,15 @@ class MemoController(
         return ResponseEntity.ok(ListMemoResponse(items = memos))
     }
 
+    @GetMapping("/by-event/{eventId}")
+    fun getMyMemoByEventId(
+        @Parameter(hidden = true) @LoggedInUser user: User,
+        @PathVariable eventId: Long,
+    ): ResponseEntity<MemoResponse> {
+        val response = memoService.getMyMemoByEventId(user.id!!, eventId)
+        return ResponseEntity.ok(response)
+    }
+
     @GetMapping("/by-tag/{tagId}")
     fun findMemosByTagId(
         @Parameter(hidden = true) @LoggedInUser user: User,
