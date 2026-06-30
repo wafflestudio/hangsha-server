@@ -51,7 +51,7 @@ class EventSyncService(
         var skipped = 0
 
         for (e in events) {
-            val applyLink = "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=${e.dataSeq}"
+            val applyLink = resolveApplyLink(e)
 
             // If we want to skip re-sync of deleted events, uncomment this block
             //if (eventRepository.existsAdminDeletedByApplyLink(applyLink)) {
@@ -228,6 +228,17 @@ class EventSyncService(
 
     private fun findCategoryId(groupId: Long, name: String): Long? =
         categoryRepository.findByGroupIdAndName(groupId, name)?.id
+
+    private fun resolveApplyLink(e: CrawledProgramEvent): String {
+        e.applyLink?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val dataSeq = e.dataSeq?.trim().orEmpty()
+        return if (dataSeq.length == 6 && dataSeq.all { it.isDigit() }) {
+            "https://www.snu.ac.kr/snunow/events?md=v&bbsidx=$dataSeq"
+        } else {
+            "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$dataSeq"
+        }
+    }
 
     private fun deriveEventPeriodAndLocation(
         e: CrawledProgramEvent,

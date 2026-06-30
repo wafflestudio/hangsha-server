@@ -4,13 +4,20 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
+import com.team1.hangsha.batch.crawler.SnuCalendarCrawler
 import com.team1.hangsha.common.upload.OciUploadService
+import com.team1.hangsha.config.DatabaseConfig
+import com.team1.hangsha.config.OciConfig
+import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.service.EventSyncService
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Import
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,6 +25,7 @@ import java.time.LocalDate
 import kotlin.system.exitProcess
 
 @Component
+@ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
 class ExtraSnuSyncRunner(
     private val eventSyncService: EventSyncService,
     private val ociUploadService: OciUploadService,
@@ -25,6 +33,11 @@ class ExtraSnuSyncRunner(
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
+        val job = args.getOptionValues("job")?.firstOrNull()
+        if (job != null && job != "extra-snu-sync") {
+            return
+        }
+
         val opt = BatchArgs.from(args)
 
         val applyChkCodes = listOf("0001", "0002", "0003", "0004")
@@ -82,6 +95,36 @@ class ExtraSnuSyncRunner(
             }
         }
 
+        if (opt.withSnuCalendar) {
+            val snuCalendarEvents = SnuCalendarCrawler(
+                delayMsBetweenPages = opt.delayMs,
+                delayMsBetweenDetails = opt.detailDelayMs,
+            ).crawl(
+                SnuCalendarCrawler.CrawlOptions(
+                    startPage = opt.snuCalendarStartPage,
+                    maxPages = opt.snuCalendarMaxPages,
+                )
+            )
+
+            if (opt.outFile != null) {
+                dumpBuffer += snuCalendarEvents
+            }
+
+            totalCrawled += snuCalendarEvents.size
+            if (opt.dumpOnly) {
+                println("SNU calendar crawled: total=${snuCalendarEvents.size}")
+            } else {
+                val result = eventSyncService.sync(snuCalendarEvents)
+                totalUpserted += result.upserted
+                totalSkipped += result.skipped
+
+                println(
+                    "SNU calendar synced: upserted=${result.upserted}, " +
+                            "total=${result.total}, skipped=${result.skipped}"
+                )
+            }
+        }
+
         if (opt.outFile != null) {
             writeDumpFile(opt.outFile, dumpBuffer)
             println("Saved crawled events to ${opt.outFile} (count=${dumpBuffer.size})")
@@ -115,6 +158,9 @@ private data class BatchArgs(
     val detailDelayMs: Long = 100,
     val outFile: String? = null,
     val dumpOnly: Boolean = false,
+    val withSnuCalendar: Boolean = true,
+    val snuCalendarStartPage: Int = 1,
+    val snuCalendarMaxPages: Int = 4,
 ) {
     companion object {
         fun from(args: ApplicationArguments): BatchArgs {
@@ -134,6 +180,9 @@ private data class BatchArgs(
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
                 outFile = single("outFile"),
                 dumpOnly = args.containsOption("dumpOnly"),
+                withSnuCalendar = !args.containsOption("noSnuCalendar"),
+                snuCalendarStartPage = single("snuCalendarStartPage")?.toInt() ?: 1,
+                snuCalendarMaxPages = single("snuCalendarMaxPages")?.toInt() ?: 4,
             )
         }
     }
@@ -156,11 +205,23 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
     )
 }
 
+@Configuration
+@ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
+@Import(
+    DatabaseConfig::class,
+    EventSyncService::class,
+    TestValueLogger::class,
+    OciConfig::class,
+    OciUploadService::class,
+)
+class ExtraSnuSyncConfiguration
+
 private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
     val isPeriodEvent = isPeriodEventFromList()
 
     return CrawledProgramEvent(
         dataSeq = dataSeq,
+        applyLink = dataSeq?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" },
         majorTypes = majorTypes,
         title = title,
         status = status,
