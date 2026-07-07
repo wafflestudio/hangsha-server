@@ -63,12 +63,11 @@ class EventSyncService(
             val orgId = orgName?.let { getOrCreateCategoryId(orgGroupId, it) }
             val typeName = normalizeProgramType(e)
 
-            val statusName = normalizeStatus(e.status)
-            val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
             val eventTypeId = typeName?.let { findCategoryId(typeGroupId, it) }
 
             val applyStart = e.applyStart?.let { dateStart(it) }
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
+            val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
 
             val sessions = if (e.isPeriodEvent == true) {
                 emptyList()
@@ -135,6 +134,15 @@ class EventSyncService(
                     eventStart = eventStart,
                     eventEnd = eventEnd,
                 )
+                val statusName = normalizeStatus(
+                    raw = e.status,
+                    event = e,
+                    applyEnd = applyEnd,
+                    eventStart = eventStart,
+                    eventEnd = eventEnd,
+                    now = now,
+                )
+                val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
 
                 val crawledTagsJson = if (cleanedTags.isEmpty()) {
                     null
@@ -208,11 +216,22 @@ class EventSyncService(
 
         val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
 
-        return eventRepository.closeExpiredRecruitingEvents(
-            recruitingStatusId = recruitingStatusId,
+        val unknownStatusId = findCategoryId(statusGroupId, "상태 미제공")
+
+        val closedRecruiting = eventRepository.closeExpiredEventsByStatus(
+            statusId = recruitingStatusId,
             closedStatusId = closedStatusId,
             now = now,
         )
+        val closedUnknown = unknownStatusId?.let {
+            eventRepository.closeExpiredEventsByStatus(
+                statusId = it,
+                closedStatusId = closedStatusId,
+                now = now,
+            )
+        } ?: 0
+
+        return closedRecruiting + closedUnknown
     }
 
     private fun requireGroupId(name: String): Long {
@@ -299,12 +318,42 @@ class EventSyncService(
         }
     }
 
-    private fun normalizeStatus(raw: String?): String? {
+    private fun normalizeStatus(
+        raw: String?,
+        event: CrawledProgramEvent,
+        applyEnd: LocalDateTime?,
+        eventStart: LocalDateTime?,
+        eventEnd: LocalDateTime?,
+        now: LocalDateTime,
+    ): String? {
         val s = raw?.trim()
         if (s.isNullOrBlank()) return null
         return when (s) {
             "마감임박" -> "모집중"
+            "상태 미제공" -> inferUnknownStatus(event, applyEnd, eventStart, eventEnd, now)
             else -> s
+        }
+    }
+
+    private fun inferUnknownStatus(
+        event: CrawledProgramEvent,
+        applyEnd: LocalDateTime?,
+        eventStart: LocalDateTime?,
+        eventEnd: LocalDateTime?,
+        now: LocalDateTime,
+    ): String {
+        val hasOpenApplyPeriod = applyEnd != null && !applyEnd.isBefore(now)
+        val eventNotExpired = (eventEnd ?: eventStart)?.let { !it.isBefore(now) } ?: false
+        val hasApplyOrSupportText = sequenceOf(
+            event.title,
+            event.mainContentHtml,
+            event.tags.joinToString(" "),
+        ).any { it?.contains(Regex("""신청|지원""")) == true }
+
+        return if (hasOpenApplyPeriod || hasApplyOrSupportText || eventNotExpired) {
+            "모집중"
+        } else {
+            "모집마감"
         }
     }
 
