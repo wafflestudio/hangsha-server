@@ -202,7 +202,7 @@ private data class BatchArgs(
     val withSnuCalendar: Boolean = true,
     val snuCalendarStartPage: Int = 1,
     val snuCalendarMaxPages: Int = 4,
-    val aiParser: Boolean = false,
+    val aiParser: Boolean = true,
     val aiParserBatchSize: Int = 1,
 ) {
     companion object {
@@ -226,7 +226,7 @@ private data class BatchArgs(
                 withSnuCalendar = !args.containsOption("noSnuCalendar"),
                 snuCalendarStartPage = single("snuCalendarStartPage")?.toInt() ?: 1,
                 snuCalendarMaxPages = single("snuCalendarMaxPages")?.toInt() ?: 4,
-                aiParser = args.containsOption("aiParser"),
+                aiParser = !args.containsOption("noAiParser"),
                 aiParserBatchSize = single("aiParserBatchSize")?.toInt()?.coerceAtLeast(1) ?: 1,
             )
         }
