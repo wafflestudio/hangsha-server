@@ -14,12 +14,15 @@ import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.user.service.UserService
 import com.team1.hangsha.user.AuthCookieSupport
 import com.team1.hangsha.user.LoggedInUser
+import com.team1.hangsha.user.dto.AndroidLogoutRequest
 import com.team1.hangsha.user.model.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import com.team1.hangsha.user.dto.AndroidRefreshRequest
+import com.team1.hangsha.user.dto.AndroidTokenResponse
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -86,5 +89,44 @@ class AuthController(
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, cookieSupport.clearRefreshCookie().toString())
             .build()
+    }
+
+    @PostMapping("/android/login")
+    fun androidLocalLogin(@RequestBody req: LoginRequest): ResponseEntity<AndroidTokenResponse> {
+        val issued = userService.issueAfterLocalLogin(req.email, req.password)
+
+        return ResponseEntity.ok(
+            AndroidTokenResponse(
+                accessToken = issued.accessToken,
+                refreshToken = issued.refreshToken
+            )
+        )
+    }
+
+    @PostMapping("/android/refresh")
+    fun androidRefresh(@RequestBody req: AndroidRefreshRequest): ResponseEntity<AndroidTokenResponse> {
+        if (req.refreshToken.isBlank()) throw DomainException(ErrorCode.AUTH_UNAUTHORIZED)
+
+        val issued = userService.rotateAndIssueAccessToken(req.refreshToken)
+
+        return ResponseEntity.ok(
+            AndroidTokenResponse(
+                accessToken = issued.accessToken,
+                refreshToken = issued.refreshToken
+            )
+        )
+    }
+
+    @PostMapping("/android/logout")
+    @Operation(
+        summary = "안드로이드 로그아웃",
+        description = "안드로이드 클라이언트의 리프레시 토큰을 JSON Body로 받아 무효화합니다."
+    )
+    fun androidLogout(
+        @RequestBody req: AndroidLogoutRequest
+    ): ResponseEntity<Unit> {
+        userService.logout(req.refreshToken)
+
+        return ResponseEntity.noContent().build()
     }
 }
