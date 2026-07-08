@@ -113,7 +113,7 @@ class SnuCalendarCrawler(
         val content = doc.selectFirst(".board-view .content") ?: doc.selectFirst(".view .content")
         val contentHtml = content?.html()?.trim()?.takeIf { it.isNotBlank() }
         val contentText = content?.text()?.normalize().orEmpty()
-        if (contentText.contains("비교과")) {
+        if (contentText.contains("비교과") || contentHtml.orEmpty().contains("extra.snu.ac.kr", ignoreCase = true)) {
             if (debug) println("[SNU-CALENDAR] skip duplicate extra-snu candidate url=$sourceUrl")
             return null
         }
@@ -160,7 +160,7 @@ class SnuCalendarCrawler(
         return CrawledProgramEvent(
             dataSeq = listItem.bbsidx,
             applyLink = sourceUrl,
-            majorTypes = listOf("SNU 캘린더"),
+            majorTypes = emptyList(),
             title = title,
             status = "상태 미제공",
             operationMode = null,
@@ -221,7 +221,7 @@ class SnuCalendarCrawler(
         return CrawledProgramEvent(
             dataSeq = bbsidx,
             applyLink = sourceUrl,
-            majorTypes = listOf("SNU 캘린더"),
+            majorTypes = emptyList(),
             title = title,
             status = "상태 미제공",
             activityStart = period.start,

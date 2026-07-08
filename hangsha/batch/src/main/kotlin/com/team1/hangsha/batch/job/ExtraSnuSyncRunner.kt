@@ -1,6 +1,7 @@
 package com.team1.hangsha.batch.job
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.team1.hangsha.batch.ai.EliceEventParserClient
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
@@ -12,10 +13,14 @@ import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.model.EventPeriodPolicy
+import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
+import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.stereotype.Component
@@ -27,8 +32,10 @@ import kotlin.system.exitProcess
 @Component
 @ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
 class ExtraSnuSyncRunner(
-    private val eventSyncService: EventSyncService,
+    private val eventSyncServiceProvider: ObjectProvider<EventSyncService>,
+    private val eventRepositoryProvider: ObjectProvider<EventRepository>,
     private val ociUploadService: OciUploadService,
+    private val eliceEventParserClient: EliceEventParserClient,
     private val objectMapper: ObjectMapper,
 ) : ApplicationRunner {
 
@@ -87,7 +94,7 @@ class ExtraSnuSyncRunner(
                     continue
                 }
 
-                val result = eventSyncService.sync(crawledEvents)
+                val result = eventSyncService().sync(crawledEvents)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
@@ -106,15 +113,21 @@ class ExtraSnuSyncRunner(
                 )
             )
 
-            if (opt.outFile != null) {
-                dumpBuffer += snuCalendarEvents
+            val parsedSnuCalendarEvents = if (opt.aiParser) {
+                enrichNewSnunowEvents(snuCalendarEvents, opt.aiParserBatchSize)
+            } else {
+                snuCalendarEvents
             }
 
-            totalCrawled += snuCalendarEvents.size
+            if (opt.outFile != null) {
+                dumpBuffer += parsedSnuCalendarEvents
+            }
+
+            totalCrawled += parsedSnuCalendarEvents.size
             if (opt.dumpOnly) {
-                println("SNU calendar crawled: total=${snuCalendarEvents.size}")
+                println("SNU calendar crawled: total=${parsedSnuCalendarEvents.size}")
             } else {
-                val result = eventSyncService.sync(snuCalendarEvents)
+                val result = eventSyncService().sync(parsedSnuCalendarEvents)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
@@ -133,7 +146,7 @@ class ExtraSnuSyncRunner(
         if (opt.dumpOnly) {
             println("Crawled $totalCrawled rows (dump-only mode)")
         } else {
-            val closedExpired = eventSyncService.closeExpiredRecruitingEvents() // 행사 마감 처리
+            val closedExpired = eventSyncService().closeExpiredRecruitingEvents() // 행사 마감 처리
 
             println(
                 "Synced $totalUpserted rows from $totalCrawled crawled events " +
@@ -148,6 +161,34 @@ class ExtraSnuSyncRunner(
         path.parent?.let { Files.createDirectories(it) }
         objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), rows)
     }
+
+    private fun eventSyncService(): EventSyncService =
+        eventSyncServiceProvider.getIfAvailable()
+            ?: throw IllegalStateException("EventSyncService is unavailable. Remove --dumpOnly only when DB settings are configured.")
+
+    private fun enrichNewSnunowEvents(
+        events: List<CrawledProgramEvent>,
+        batchSize: Int,
+    ): List<CrawledProgramEvent> {
+        val repository = eventRepositoryProvider.getIfAvailable()
+        val parserTargets = events.filter { event ->
+            val applyLink = event.applyLink?.trim().orEmpty()
+            if (!applyLink.isSnunowEventLink()) {
+                false
+            } else if (repository == null) {
+                true
+            } else {
+                !repository.existsByApplyLink(applyLink)
+            }
+        }
+
+        if (parserTargets.isEmpty()) return events
+
+        val parsedByKey = eliceEventParserClient.enrich(parserTargets, batchSize)
+            .associateBy { it.parserKey() }
+
+        return events.map { parsedByKey[it.parserKey()] ?: it }
+    }
 }
 
 private data class BatchArgs(
@@ -161,6 +202,8 @@ private data class BatchArgs(
     val withSnuCalendar: Boolean = true,
     val snuCalendarStartPage: Int = 1,
     val snuCalendarMaxPages: Int = 4,
+    val aiParser: Boolean = false,
+    val aiParserBatchSize: Int = 1,
 ) {
     companion object {
         fun from(args: ApplicationArguments): BatchArgs {
@@ -183,6 +226,8 @@ private data class BatchArgs(
                 withSnuCalendar = !args.containsOption("noSnuCalendar"),
                 snuCalendarStartPage = single("snuCalendarStartPage")?.toInt() ?: 1,
                 snuCalendarMaxPages = single("snuCalendarMaxPages")?.toInt() ?: 4,
+                aiParser = args.containsOption("aiParser"),
+                aiParserBatchSize = single("aiParserBatchSize")?.toInt()?.coerceAtLeast(1) ?: 1,
             )
         }
     }
@@ -208,13 +253,20 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
 @Configuration
 @ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
 @Import(
-    DatabaseConfig::class,
-    EventSyncService::class,
     TestValueLogger::class,
     OciConfig::class,
     OciUploadService::class,
 )
 class ExtraSnuSyncConfiguration
+
+@Configuration
+@ConditionalOnExpression("'\${job:extra-snu-sync}' == 'extra-snu-sync' && '\${dumpOnly:false}' == 'false'")
+@Import(
+    DatabaseConfig::class,
+    EventSyncService::class,
+    EventSearchOutboxWriter::class,
+)
+class ExtraSnuSyncDatabaseConfiguration
 
 private fun ProgramEvent.toCrawledProgramEvent(): CrawledProgramEvent {
     val isPeriodEvent = isPeriodEventFromList()
@@ -253,3 +305,9 @@ private fun DetailSession.toCrawledDetailSession(): CrawledDetailSession =
         startTime = startTime,
         endTime = endTime
     )
+
+private fun String.isSnunowEventLink(): Boolean =
+    startsWith("https://www.snu.ac.kr/snunow/events")
+
+private fun CrawledProgramEvent.parserKey(): String =
+    dataSeq?.takeIf { it.isNotBlank() } ?: applyLink?.takeIf { it.isNotBlank() } ?: title.orEmpty()
