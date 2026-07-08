@@ -42,7 +42,18 @@ object SearchHighlighter {
     }
 
     // raw words(primary) → KiWi tokens(fallback) 우선순위로 스니펫 추출
+    // 본문에 매칭이 하나도 없으면 맨 앞부분을 하이라이트 없이 반환
     fun extractSnippetWithFallback(content: String, primary: List<String>, fallback: List<String>): String? {
-        return extractSnippet(content, primary) ?: extractSnippet(content, fallback)
+        return extractSnippet(content, primary)
+            ?: extractSnippet(content, fallback)
+            ?: leadingSnippet(content)
+    }
+
+    private fun leadingSnippet(content: String, windowSize: Int = 200): String? {
+        if (content.isBlank()) return null
+        if (content.length <= windowSize) return content
+
+        val end = content.indexOf(' ', windowSize).takeIf { it >= 0 } ?: windowSize
+        return content.substring(0, end)
     }
 }
