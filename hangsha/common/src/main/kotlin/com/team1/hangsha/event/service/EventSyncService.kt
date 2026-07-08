@@ -364,7 +364,7 @@ class EventSyncService(
             addAll(e.tags)
         }
 
-        if (candidates.any { it.contains("openlnl", ignoreCase = true) }) {
+        if (candidates.any { it.contains("lnl", ignoreCase = true) }) {
             return "OpenLnL"
         }
 
