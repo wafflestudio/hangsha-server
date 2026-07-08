@@ -1,17 +1,22 @@
-UPDATE events e
+INSERT INTO event_search_outbox (event_id, operation, status)
+SELECT e.id, 'DELETE', 'PENDING'
+FROM events e
     JOIN categories unknown_status ON unknown_status.id = e.status_id
     JOIN category_groups status_group ON status_group.id = unknown_status.group_id
-    JOIN categories next_status ON next_status.group_id = status_group.id
-        AND next_status.name = CASE
-            WHEN e.apply_end >= NOW()
-                OR COALESCE(e.event_end, e.event_start) >= NOW()
-                OR COALESCE(e.title, '') REGEXP '신청|지원'
-                OR COALESCE(e.main_content_html, '') REGEXP '신청|지원'
-                OR COALESCE(e.tags, '') REGEXP '신청|지원'
-                THEN '모집중'
-            ELSE '모집마감'
-        END
-SET e.status_id = next_status.id
+WHERE status_group.name = '모집현황'
+  AND unknown_status.name = '상태 미제공'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM event_search_outbox eso
+      WHERE eso.event_id = e.id
+        AND eso.operation = 'DELETE'
+        AND eso.status = 'PENDING'
+  );
+
+DELETE e
+FROM events e
+    JOIN categories unknown_status ON unknown_status.id = e.status_id
+    JOIN category_groups status_group ON status_group.id = unknown_status.group_id
 WHERE status_group.name = '모집현황'
   AND unknown_status.name = '상태 미제공';
 

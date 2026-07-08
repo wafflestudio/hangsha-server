@@ -160,7 +160,7 @@ class SnuCalendarCrawler(
         return CrawledProgramEvent(
             dataSeq = listItem.bbsidx,
             applyLink = sourceUrl,
-            majorTypes = listOf("SNU 캘린더"),
+            majorTypes = emptyList(),
             title = title,
             status = "상태 미제공",
             operationMode = null,
@@ -221,7 +221,7 @@ class SnuCalendarCrawler(
         return CrawledProgramEvent(
             dataSeq = bbsidx,
             applyLink = sourceUrl,
-            majorTypes = listOf("SNU 캘린더"),
+            majorTypes = emptyList(),
             title = title,
             status = "상태 미제공",
             activityStart = period.start,
