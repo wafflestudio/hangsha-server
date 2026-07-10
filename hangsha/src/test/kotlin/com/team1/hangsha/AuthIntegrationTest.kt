@@ -253,6 +253,18 @@ class AuthIntegrationTest : IntegrationTestBase() {
         val registerBody = objectMapper.readValue(registerRes.response.contentAsString, MobileTokenResponse::class.java)
         assertTrue(registerBody.refreshToken.isNotBlank())
 
+        val sessionRes = mockMvc.post("/api/v1/mobile/auth/session") {
+            header(HttpHeaders.AUTHORIZATION, bearer(registerBody.accessToken))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { exists() }
+            jsonPath("$.refreshToken") { exists() }
+            header { doesNotExist(HttpHeaders.SET_COOKIE) }
+        }.andReturn()
+
+        val sessionBody = objectMapper.readValue(sessionRes.response.contentAsString, MobileTokenResponse::class.java)
+        assertTrue(sessionBody.refreshToken.isNotBlank())
+
         val loginRes = mockMvc.post("/api/v1/mobile/auth/login") {
             contentType = MediaType.APPLICATION_JSON
             content = toJson(LoginRequest(email, password))
