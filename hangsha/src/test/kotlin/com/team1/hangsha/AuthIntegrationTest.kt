@@ -22,6 +22,7 @@ class AuthIntegrationTest : IntegrationTestBase() {
 
     data class AccessTokenResponse(val accessToken: String)
     data class RefreshResponse(val accessToken: String)
+    data class MobileTokenResponse(val accessToken: String, val refreshToken: String)
 
     private fun extractRefreshCookiePair(setCookieHeader: String): String {
         // 예: "refreshToken=abc.def; Path=/api/v1/auth; HttpOnly; ..."
@@ -227,6 +228,74 @@ class AuthIntegrationTest : IntegrationTestBase() {
 
         assertTrue(setCookie.contains("refreshToken="))
         // Max-Age=0 같은 세부값은 구현에 따라 다를 수 있으니 핵심만 체크
+    }
+
+    // ---------------------------
+    // Mobile auth flow tests (JSON refresh token)
+    // ---------------------------
+
+    @Test
+    fun `mobile register login refresh logout flow works without cookies`() {
+        val email = "mobile_${UUID.randomUUID()}@example.com"
+        val password = "Abcd1234!"
+
+        val registerRes = mockMvc.post("/api/v1/mobile/auth/register") {
+            contentType = MediaType.APPLICATION_JSON
+            content = toJson(RegisterRequest(email, password))
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.accessToken") { exists() }
+            jsonPath("$.refreshToken") { exists() }
+            header { doesNotExist(HttpHeaders.SET_COOKIE) }
+        }.andReturn()
+
+        val registerBody = objectMapper.readValue(registerRes.response.contentAsString, MobileTokenResponse::class.java)
+        assertTrue(registerBody.refreshToken.isNotBlank())
+
+        val loginRes = mockMvc.post("/api/v1/mobile/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = toJson(LoginRequest(email, password))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { exists() }
+            jsonPath("$.refreshToken") { exists() }
+            header { doesNotExist(HttpHeaders.SET_COOKIE) }
+        }.andReturn()
+
+        val loginBody = objectMapper.readValue(loginRes.response.contentAsString, MobileTokenResponse::class.java)
+
+        val refreshRes = mockMvc.post("/api/v1/mobile/auth/refresh") {
+            contentType = MediaType.APPLICATION_JSON
+            content = toJson(mapOf("refreshToken" to loginBody.refreshToken))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { exists() }
+            jsonPath("$.refreshToken") { exists() }
+            header { doesNotExist(HttpHeaders.SET_COOKIE) }
+        }.andReturn()
+
+        val refreshBody = objectMapper.readValue(refreshRes.response.contentAsString, MobileTokenResponse::class.java)
+        assertNotEquals(loginBody.accessToken, refreshBody.accessToken)
+        assertNotEquals(loginBody.refreshToken, refreshBody.refreshToken)
+
+        mockMvc.post("/api/v1/mobile/auth/logout") {
+            contentType = MediaType.APPLICATION_JSON
+            content = toJson(mapOf("refreshToken" to refreshBody.refreshToken))
+        }.andExpect {
+            status { isNoContent() }
+            header { doesNotExist(HttpHeaders.SET_COOKIE) }
+        }
+    }
+
+    @Test
+    fun `android auth endpoints are removed`() {
+        mockMvc.post("/api/v1/auth/android/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = toJson(LoginRequest("missing@example.com", "Abcd1234!"))
+        }.andExpect {
+            status { isNotFound() }
+        }
     }
 
     // ---------------------------
