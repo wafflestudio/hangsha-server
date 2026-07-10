@@ -1,14 +1,14 @@
 package com.team1.hangsha.user.dto
 
-data class AndroidRefreshRequest(
+data class MobileRefreshRequest(
     val refreshToken: String
 )
 
-data class AndroidTokenResponse(
+data class MobileTokenResponse(
     val accessToken: String,
     val refreshToken: String
 )
 
-data class AndroidLogoutRequest(
+data class MobileLogoutRequest(
     val refreshToken: String
 )
