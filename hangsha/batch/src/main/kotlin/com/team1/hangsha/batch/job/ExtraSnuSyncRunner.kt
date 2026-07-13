@@ -69,13 +69,18 @@ class ExtraSnuSyncRunner(
                     break
                 }
 
+                val syncTargets = filterNewExtraSnuEvents(baseEvents)
+                if (syncTargets.isEmpty()) {
+                    println("Page $page: all ${baseEvents.size} events already exist, skipping details and sync.")
+                    continue
+                }
+
                 val events = if (!opt.withDetails) {
-                    baseEvents
+                    syncTargets
                 } else {
                     crawler.enrichDetails(
-                        events = baseEvents,
+                        events = syncTargets,
                         ociUploadService = ociUploadService,
-                        shouldFetch = { true },
                         shouldUseDetailSessions = { e -> !e.isPeriodEventFromList() }
                     )
                 }
@@ -166,6 +171,14 @@ class ExtraSnuSyncRunner(
         eventSyncServiceProvider.getIfAvailable()
             ?: throw IllegalStateException("EventSyncService is unavailable. Remove --dumpOnly only when DB settings are configured.")
 
+    private fun filterNewExtraSnuEvents(events: List<ProgramEvent>): List<ProgramEvent> {
+        val repository = eventRepositoryProvider.getIfAvailable() ?: return events
+        return events.filter { event ->
+            val applyLink = event.extraSnuApplyLink() ?: return@filter true
+            !repository.existsByApplyLink(applyLink)
+        }
+    }
+
     private fun enrichNewSnunowEvents(
         events: List<CrawledProgramEvent>,
         batchSize: Int,
@@ -249,6 +262,12 @@ private fun ProgramEvent.isPeriodEventFromList(): Boolean {
         eventEnd = eventEnd,
     )
 }
+
+private fun ProgramEvent.extraSnuApplyLink(): String? =
+    dataSeq
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$it" }
 
 @Configuration
 @ConditionalOnProperty(name = ["job"], havingValue = "extra-snu-sync", matchIfMissing = true)
