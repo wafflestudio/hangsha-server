@@ -217,8 +217,11 @@ If a date range crosses December to January, use the next year for January.
 
 Organization policy:
 1. Return only the event organizer or operator explicitly stated in the content.
-2. Remove "서울대학교", "서울대", and "SNU" from the name.
-3. If no organizer is explicitly stated, return null. Do not guess.
+2. If multiple organizations are found, return only the single most confident one. Never join names with commas.
+3. Remove "서울대학교", "서울대", and "SNU" from the name.
+4. If no organizer is explicitly stated, return null. Do not guess.
+
+Choose the closest category by semantic intent rather than exact wording; use "기타" only when no category reasonably fits.
 
 Period policy:
 1. If listPeriodText is a single date, it is usually the event period.
@@ -268,7 +271,7 @@ private fun CrawledProgramEvent.toPromptEvent(): PromptEvent =
 private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent {
     val contentFallback = extractContentPeriodFallback(mainContentHtml)
     val organization = parsed.organization.cleanOrganization()
-    val category = parsed.category?.clean()?.takeIf { it in PROGRAM_TYPES }
+    val category = parsed.category?.clean()?.takeIf { it in PROGRAM_TYPES } ?: "기타"
     val mergedMajorTypes = mergeMajorTypes(majorTypes, organization, category)
 
     val fallbackApplyStartDate = contentFallback.applyStart?.toLocalDate()?.toString()
