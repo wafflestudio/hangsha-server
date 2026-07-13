@@ -134,7 +134,6 @@ class SnuCalendarCrawler(
         }
         val location = parseLocation(contentLines)
         val imageUrl = extractImageUrl(doc) ?: listItem.imageUrl
-        val attachments = extractAttachmentLinks(doc)
         val tags = emptyList<String>()
 
         val applyStart = if (listRangeIsApplyPeriod) listPeriod.start else null
@@ -154,8 +153,8 @@ class SnuCalendarCrawler(
             null
         }
 
-        val enrichedHtml = contentHtml
-            ?.let { appendLinkSummary(it, attachments) }
+        val sanitizedContentHtml = contentHtml
+            ?.let(::removeTrailingAttachmentLink)
 
         return CrawledProgramEvent(
             dataSeq = listItem.bbsidx,
@@ -172,7 +171,7 @@ class SnuCalendarCrawler(
             capacity = null,
             imageUrl = imageUrl,
             tags = tags,
-            mainContentHtml = enrichedHtml,
+            mainContentHtml = sanitizedContentHtml,
             isPeriodEvent = applyStart != null,
             detailSessions = listOfNotNull(session),
         )
@@ -248,21 +247,16 @@ class SnuCalendarCrawler(
         }
     }
 
-    private fun extractAttachmentLinks(doc: Document): List<String> =
-        doc.select(".download a[href]")
-            .mapNotNull { it.absUrl("href").takeIf { href -> href.isNotBlank() } }
-            .distinct()
-
-    private fun appendLinkSummary(html: String, attachments: List<String>): String {
-        if (attachments.isEmpty()) return html
-        val extra = buildString {
-            append("""<div class="snu-calendar-links">""")
-            attachments.forEach { link ->
-                append("""<p><strong>첨부 링크:</strong> <a href="$link">$link</a></p>""")
-            }
-            append("</div>")
+    private fun removeTrailingAttachmentLink(html: String): String {
+        val body = Jsoup.parseBodyFragment(html, baseUrl).body()
+        while (true) {
+            val last = body.children().lastOrNull() ?: break
+            val isGeneratedSummary = last.hasClass("snu-calendar-links")
+            val isAttachmentLinkLine = last.text().normalize().startsWith("첨부 링크:")
+            if (!isGeneratedSummary && !isAttachmentLinkLine) break
+            last.remove()
         }
-        return "$html\n$extra"
+        return body.html().trim()
     }
 
     private fun extractContentLines(content: Element?): List<String> {
