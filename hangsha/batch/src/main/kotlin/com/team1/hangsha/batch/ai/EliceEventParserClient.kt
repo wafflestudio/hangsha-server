@@ -216,10 +216,9 @@ Use currentDate's year when a date omits the year.
 If a date range crosses December to January, use the next year for January.
 
 Organization policy:
-1. Return the responsible unit name only.
-2. Do not include "서울대학교", "서울대", or "SNU" in organization.
-3. Examples: "서울대학교 인권센터" -> "인권센터", "서울대학교 중앙도서관" -> "중앙도서관".
-4. If the only organization you can find is the university itself, return null.
+1. Return only the event organizer or operator explicitly stated in the content.
+2. Remove "서울대학교", "서울대", and "SNU" from the name.
+3. If no organizer is explicitly stated, return null. Do not guess.
 
 Period policy:
 1. If listPeriodText is a single date, it is usually the event period.
