@@ -198,6 +198,27 @@ class EventSyncService(
     }
 
     @Transactional
+    fun openStartedWaitingEvents(): Int {
+        val statusGroupId = requireGroupId("모집현황")
+        val waitingStatusId = findCategoryId(statusGroupId, "모집대기")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집대기"
+            )
+        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집중"
+            )
+
+        return eventRepository.openStartedEventsByStatus(
+            statusId = waitingStatusId,
+            recruitingStatusId = recruitingStatusId,
+            now = LocalDateTime.now(ZoneId.of("Asia/Seoul")),
+        )
+    }
+
+    @Transactional
     fun closeExpiredRecruitingEvents(): Int {
         // @TODO: 굉장히 하드코딩이긴 한데...
         val statusGroupId = requireGroupId("모집현황")
