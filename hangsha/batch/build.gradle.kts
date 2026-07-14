@@ -62,6 +62,12 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+tasks.register<Copy>("copyPlaywrightCliClasspath") {
+    from(configurations.runtimeClasspath)
+    into(layout.buildDirectory.dir("playwright-cli"))
+    include("playwright-*.jar", "driver-*.jar", "driver-bundle-*.jar", "gson-*.jar")
+}
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
