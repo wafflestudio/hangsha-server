@@ -5,7 +5,7 @@ import com.team1.hangsha.batch.ai.EliceEventParserClient
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
-import com.team1.hangsha.batch.crawler.SnuCalendarCrawler
+import com.team1.hangsha.batch.crawler.SnuNowCrawler
 import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.config.DatabaseConfig
 import com.team1.hangsha.config.OciConfig
@@ -107,37 +107,37 @@ class ExtraSnuSyncRunner(
             }
         }
 
-        if (opt.withSnuCalendar) {
-            val snuCalendarEvents = SnuCalendarCrawler(
+        if (opt.withSnuNow) {
+            val snuNowEvents = SnuNowCrawler(
                 delayMsBetweenPages = opt.delayMs,
                 delayMsBetweenDetails = opt.detailDelayMs,
             ).crawl(
-                SnuCalendarCrawler.CrawlOptions(
-                    startPage = opt.snuCalendarStartPage,
-                    maxPages = opt.snuCalendarMaxPages,
+                SnuNowCrawler.CrawlOptions(
+                    startPage = opt.snuNowStartPage,
+                    maxPages = opt.snuNowMaxPages,
                 )
             )
 
-            val parsedSnuCalendarEvents = if (opt.aiParser) {
-                enrichNewSnunowEvents(snuCalendarEvents, opt.aiParserBatchSize)
+            val parsedSnuNowEvents = if (opt.aiParser) {
+                enrichNewSnuNowEvents(snuNowEvents, opt.aiParserBatchSize)
             } else {
-                snuCalendarEvents
+                snuNowEvents
             }
 
             if (opt.outFile != null) {
-                dumpBuffer += parsedSnuCalendarEvents
+                dumpBuffer += parsedSnuNowEvents
             }
 
-            totalCrawled += parsedSnuCalendarEvents.size
+            totalCrawled += parsedSnuNowEvents.size
             if (opt.dumpOnly) {
-                println("SNU calendar crawled: total=${parsedSnuCalendarEvents.size}")
+                println("SNU Now crawled: total=${parsedSnuNowEvents.size}")
             } else {
-                val result = eventSyncService().sync(parsedSnuCalendarEvents)
+                val result = eventSyncService().sync(parsedSnuNowEvents)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
                 println(
-                    "SNU calendar synced: upserted=${result.upserted}, " +
+                    "SNU Now synced: upserted=${result.upserted}, " +
                             "total=${result.total}, skipped=${result.skipped}"
                 )
             }
@@ -180,7 +180,7 @@ class ExtraSnuSyncRunner(
         }
     }
 
-    private fun enrichNewSnunowEvents(
+    private fun enrichNewSnuNowEvents(
         events: List<CrawledProgramEvent>,
         batchSize: Int,
     ): List<CrawledProgramEvent> {
@@ -196,12 +196,12 @@ class ExtraSnuSyncRunner(
             }
         }
 
-        if (parserTargets.isEmpty()) return events
+        // SNU Now는 applyLink가 이미 존재하면 재동기화하지 않는다.
+        // 기존 행사는 AI parser만 건너뛰고 raw crawler 값으로 sync하면
+        // organization/category 등 이미 저장된 값이 덮어써질 수 있다.
+        if (parserTargets.isEmpty()) return emptyList()
 
-        val parsedByKey = eliceEventParserClient.enrich(parserTargets, batchSize)
-            .associateBy { it.parserKey() }
-
-        return events.map { parsedByKey[it.parserKey()] ?: it }
+        return eliceEventParserClient.enrich(parserTargets, batchSize)
     }
 }
 
@@ -213,9 +213,9 @@ private data class BatchArgs(
     val detailDelayMs: Long = 100,
     val outFile: String? = null,
     val dumpOnly: Boolean = false,
-    val withSnuCalendar: Boolean = true,
-    val snuCalendarStartPage: Int = 1,
-    val snuCalendarMaxPages: Int = 4,
+    val withSnuNow: Boolean = true,
+    val snuNowStartPage: Int = 1,
+    val snuNowMaxPages: Int = 4,
     val aiParser: Boolean = true,
     val aiParserBatchSize: Int = 1,
 ) {
@@ -237,9 +237,13 @@ private data class BatchArgs(
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
                 outFile = single("outFile"),
                 dumpOnly = args.containsOption("dumpOnly"),
-                withSnuCalendar = !args.containsOption("noSnuCalendar"),
-                snuCalendarStartPage = single("snuCalendarStartPage")?.toInt() ?: 1,
-                snuCalendarMaxPages = single("snuCalendarMaxPages")?.toInt() ?: 4,
+                withSnuNow = !args.containsOption("noSnuNow") && !args.containsOption("noSnuCalendar"),
+                snuNowStartPage = single("snuNowStartPage")?.toInt()
+                    ?: single("snuCalendarStartPage")?.toInt()
+                    ?: 1,
+                snuNowMaxPages = single("snuNowMaxPages")?.toInt()
+                    ?: single("snuCalendarMaxPages")?.toInt()
+                    ?: 4,
                 aiParser = !args.containsOption("noAiParser"),
                 aiParserBatchSize = single("aiParserBatchSize")?.toInt()?.coerceAtLeast(1) ?: 1,
             )

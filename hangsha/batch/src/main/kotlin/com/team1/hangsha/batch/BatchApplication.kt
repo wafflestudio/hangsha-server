@@ -26,7 +26,7 @@ fun main(args: Array<String>) {
     val builder = SpringApplicationBuilder(BatchApplication::class.java)
         .web(WebApplicationType.NONE)
 
-    if (args.any { it == "--job=snu-calendar-dump" }) {
+    if (args.any { it == "--job=snu-now-dump" || it == "--job=snu-calendar-dump" }) {
         builder.properties(
             mapOf(
                 "spring.autoconfigure.exclude" to listOf(

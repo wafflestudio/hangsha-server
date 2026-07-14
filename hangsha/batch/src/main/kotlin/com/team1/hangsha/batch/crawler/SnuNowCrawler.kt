@@ -11,7 +11,7 @@ import org.jsoup.nodes.Element
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
-class SnuCalendarCrawler(
+class SnuNowCrawler(
     private val baseUrl: String = "https://www.snu.ac.kr",
     private val delayMsBetweenPages: Long = 200,
     private val delayMsBetweenDetails: Long = 100,
@@ -251,7 +251,7 @@ class SnuCalendarCrawler(
         val body = Jsoup.parseBodyFragment(html, baseUrl).body()
         while (true) {
             val last = body.children().lastOrNull() ?: break
-            val isGeneratedSummary = last.hasClass("snu-calendar-links")
+            val isGeneratedSummary = last.hasClass("snu-now-links")
             val isAttachmentLinkLine = last.text().normalize().startsWith("첨부 링크:")
             if (!isGeneratedSummary && !isAttachmentLinkLine) break
             last.remove()
