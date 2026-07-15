@@ -25,7 +25,10 @@ class SnuNowCrawler(
         .followRedirects(true)
         .build(),
 ) {
-    fun crawl(opt: CrawlOptions): List<CrawledProgramEvent> {
+    fun crawl(
+        opt: CrawlOptions,
+        shouldFetchDetail: (String) -> Boolean = { true },
+    ): List<CrawledProgramEvent> {
         require(opt.maxPages > 0) { "maxPages must be positive" }
         require(opt.startPage > 0) { "startPage must be positive" }
 
@@ -63,6 +66,11 @@ class SnuNowCrawler(
 
             newItems.forEach { item ->
                 val detailUrl = canonicalDetailUrl(item.bbsidx)
+                if (!shouldFetchDetail(detailUrl)) {
+                    if (debug) println("[SNU-CALENDAR] skip existing detail url=$detailUrl")
+                    return@forEach
+                }
+
                 val detailHtml = fetch(detailUrl, referer = listUrl)
                 val event = if (detailHtml == null) {
                     item.toFallbackEvent(detailUrl)

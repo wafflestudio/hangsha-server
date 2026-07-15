@@ -75,15 +75,11 @@ class ExtraSnuSyncRunner(
                     continue
                 }
 
-                val events = if (!opt.withDetails) {
-                    syncTargets
-                } else {
-                    crawler.enrichDetails(
-                        events = syncTargets,
-                        ociUploadService = ociUploadService,
-                        shouldUseDetailSessions = { e -> !e.isPeriodEventFromList() }
-                    )
-                }
+                val events = crawler.enrichDetails(
+                    events = syncTargets,
+                    ociUploadService = ociUploadService,
+                    shouldUseDetailSessions = { e -> !e.isPeriodEventFromList() }
+                )
 
                 // dumpOnly 여부와 상관없이 이미지 업로드는 항상 수행한다.
                 val eventsWithUploadedImages = crawler.uploadEventImages(events, ociUploadService)
@@ -93,13 +89,17 @@ class ExtraSnuSyncRunner(
                     dumpBuffer += crawledEvents
                 }
 
+                val detailFilter = filterEventsWithParsedDetail(crawledEvents, source = "Extra SNU", page = page.toString())
+                val syncEvents = detailFilter.events
+
+                totalSkipped += detailFilter.skipped
                 totalCrawled += crawledEvents.size
                 if (opt.dumpOnly) {
                     println("Page $page crawled: total=${crawledEvents.size}")
                     continue
                 }
 
-                val result = eventSyncService().sync(crawledEvents)
+                val result = eventSyncService().sync(syncEvents)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
@@ -108,6 +108,7 @@ class ExtraSnuSyncRunner(
         }
 
         if (opt.withSnuNow) {
+            var snuNowExistingSkipped = 0
             val snuNowEvents = SnuNowCrawler(
                 delayMsBetweenPages = opt.delayMs,
                 delayMsBetweenDetails = opt.detailDelayMs,
@@ -115,8 +116,19 @@ class ExtraSnuSyncRunner(
                 SnuNowCrawler.CrawlOptions(
                     startPage = opt.snuNowStartPage,
                     maxPages = opt.snuNowMaxPages,
-                )
+                ),
+                shouldFetchDetail = { applyLink ->
+                    if (isNewSnuNowApplyLink(applyLink)) {
+                        true
+                    } else {
+                        snuNowExistingSkipped++
+                        false
+                    }
+                }
             )
+            if (snuNowExistingSkipped > 0) {
+                println("SNU Now skipped existing events before detail fetch: $snuNowExistingSkipped")
+            }
 
             val parsedSnuNowEvents = if (opt.aiParser) {
                 enrichNewSnuNowEvents(snuNowEvents, opt.aiParserBatchSize)
@@ -128,6 +140,7 @@ class ExtraSnuSyncRunner(
                 dumpBuffer += parsedSnuNowEvents
             }
 
+            totalSkipped += snuNowExistingSkipped
             totalCrawled += parsedSnuNowEvents.size
             if (opt.dumpOnly) {
                 println("SNU Now crawled: total=${parsedSnuNowEvents.size}")
@@ -180,6 +193,11 @@ class ExtraSnuSyncRunner(
         }
     }
 
+    private fun isNewSnuNowApplyLink(applyLink: String): Boolean {
+        val repository = eventRepositoryProvider.getIfAvailable() ?: return true
+        return !repository.existsByApplyLink(applyLink)
+    }
+
     private fun enrichNewSnuNowEvents(
         events: List<CrawledProgramEvent>,
         batchSize: Int,
@@ -203,13 +221,31 @@ class ExtraSnuSyncRunner(
 
         return eliceEventParserClient.enrich(parserTargets, batchSize)
     }
+
+    private fun filterEventsWithParsedDetail(
+        events: List<CrawledProgramEvent>,
+        source: String,
+        page: String? = null,
+    ): DetailFilterResult {
+        val filtered = events.filter { !it.mainContentHtml.isNullOrBlank() }
+        val skipped = events.size - filtered.size
+        if (skipped > 0) {
+            val pageText = page?.let { " page=$it" }.orEmpty()
+            println("$source$pageText skipped empty detail events: $skipped")
+        }
+        return DetailFilterResult(filtered, skipped)
+    }
 }
+
+private data class DetailFilterResult(
+    val events: List<CrawledProgramEvent>,
+    val skipped: Int,
+)
 
 private data class BatchArgs(
     val startPage: Int = 1,
     val maxPages: Int = 4,
     val delayMs: Long = 200,
-    val withDetails: Boolean = true,
     val detailDelayMs: Long = 100,
     val outFile: String? = null,
     val dumpOnly: Boolean = false,
@@ -223,17 +259,10 @@ private data class BatchArgs(
         fun from(args: ApplicationArguments): BatchArgs {
             fun single(name: String): String? = args.getOptionValues(name)?.firstOrNull()
 
-            val withDetails = when {
-                args.containsOption("noDetails") -> false
-                args.containsOption("withDetails") -> true
-                else -> true
-            }
-
             return BatchArgs(
                 startPage = single("startPage")?.toInt() ?: 1,
                 maxPages = single("maxPages")?.toInt() ?: 4,
                 delayMs = single("delayMs")?.toLong() ?: 200L,
-                withDetails = withDetails,
                 detailDelayMs = single("detailDelayMs")?.toLong() ?: 100L,
                 outFile = single("outFile"),
                 dumpOnly = args.containsOption("dumpOnly"),
