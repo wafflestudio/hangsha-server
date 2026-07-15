@@ -2,7 +2,7 @@
 <img width="250" height="115" alt="image" src="https://github.com/user-attachments/assets/046b4994-764e-40fd-9684-3d7d9dc11d76" />
 
 https://hangsha.site/
-
+아무거나 적어보기
 ## 기획 의도
 서울대 비교과관리시스템 (https://extra.snu.ac.kr/) 에 대해 알고 계셨나요?  
 교내 곳곳에서 열리는 특강, 공연, 공모전, 토론회 등 각종 비교과 행사 정보를 볼 수 있는 사이트입니다.  
