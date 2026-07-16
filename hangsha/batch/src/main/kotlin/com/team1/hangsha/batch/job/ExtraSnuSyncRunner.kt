@@ -69,7 +69,7 @@ class ExtraSnuSyncRunner(
                     break
                 }
 
-                val syncTargets = filterNewExtraSnuEvents(baseEvents)
+                val syncTargets = filterNewExtraSnuEvents(baseEvents, dumpOnly = opt.dumpOnly)
                 if (syncTargets.isEmpty()) {
                     println("Page $page: all ${baseEvents.size} events already exist, skipping details and sync.")
                     continue
@@ -108,51 +108,81 @@ class ExtraSnuSyncRunner(
         }
 
         if (opt.withSnuNow) {
-            var snuNowExistingSkipped = 0
-            val snuNowEvents = SnuNowCrawler(
+            val crawler = SnuNowCrawler(
                 delayMsBetweenPages = opt.delayMs,
                 delayMsBetweenDetails = opt.detailDelayMs,
-            ).crawl(
-                SnuNowCrawler.CrawlOptions(
-                    startPage = opt.snuNowStartPage,
-                    maxPages = opt.snuNowMaxPages,
-                ),
-                shouldFetchDetail = { applyLink ->
-                    if (isNewSnuNowApplyLink(applyLink)) {
-                        true
-                    } else {
-                        snuNowExistingSkipped++
-                        false
-                    }
-                }
             )
-            if (snuNowExistingSkipped > 0) {
-                println("SNU Now skipped existing events before detail fetch: $snuNowExistingSkipped")
-            }
+            val crawlOptions = SnuNowCrawler.CrawlOptions(
+                startPage = opt.snuNowStartPage,
+                maxPages = opt.snuNowMaxPages,
+            )
+            val seenBbsidx = linkedSetOf<String>()
+            val endPage = opt.snuNowStartPage + opt.snuNowMaxPages - 1
 
-            val parsedSnuNowEvents = if (opt.aiParser) {
-                enrichNewSnuNowEvents(snuNowEvents, opt.aiParserBatchSize)
-            } else {
-                snuNowEvents
-            }
+            for (page in opt.snuNowStartPage..endPage) {
+                val parsedPage = crawler.crawlPage(page, crawlOptions)
+                if (parsedPage == null) {
+                    println("SNU Now page $page: fetch failed, stopping.")
+                    break
+                }
+                if (parsedPage.hasNoResultsMessage) {
+                    println("SNU Now page $page: no-results message, stopping.")
+                    break
+                }
+                if (parsedPage.items.isEmpty()) {
+                    println("SNU Now page $page: no events, stopping.")
+                    break
+                }
 
-            if (opt.outFile != null) {
-                dumpBuffer += parsedSnuNowEvents
-            }
+                val pageItems = parsedPage.items.filter { seenBbsidx.add(it.bbsidx) }
+                if (pageItems.isEmpty()) {
+                    println("SNU Now page $page: duplicate-only page, stopping.")
+                    break
+                }
 
-            totalSkipped += snuNowExistingSkipped
-            totalCrawled += parsedSnuNowEvents.size
-            if (opt.dumpOnly) {
-                println("SNU Now crawled: total=${parsedSnuNowEvents.size}")
-            } else {
+                val newItems = filterNewByApplyLink(
+                    items = pageItems,
+                    dumpOnly = opt.dumpOnly,
+                    applyLinkOf = crawler::canonicalApplyLink,
+                )
+                totalSkipped += newItems.skipped
+                if (newItems.items.isEmpty()) {
+                    println("SNU Now page $page: all ${pageItems.size} events already exist, skipping details and sync.")
+                    if (opt.delayMs > 0) Thread.sleep(opt.delayMs)
+                    continue
+                }
+
+                val snuNowEvents = crawler.enrichDetails(
+                    items = newItems.items,
+                    referer = crawler.buildListUrl(page, crawlOptions),
+                )
+                val detailFilter = filterEventsWithParsedDetail(snuNowEvents, source = "SNU Now", page = page.toString())
+                val detailEvents = detailFilter.events
+                totalSkipped += detailFilter.skipped
+
+                val parsedSnuNowEvents = if (opt.aiParser) {
+                    enrichSnuNowEvents(detailEvents, opt.aiParserBatchSize)
+                } else {
+                    detailEvents
+                }
+
+                if (opt.outFile != null) {
+                    dumpBuffer += parsedSnuNowEvents
+                }
+
+                totalCrawled += snuNowEvents.size
+                if (opt.dumpOnly) {
+                    println("SNU Now page $page crawled: total=${snuNowEvents.size}")
+                    if (opt.delayMs > 0) Thread.sleep(opt.delayMs)
+                    continue
+                }
+
                 val result = eventSyncService().sync(parsedSnuNowEvents)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
-                println(
-                    "SNU Now synced: upserted=${result.upserted}, " +
-                            "total=${result.total}, skipped=${result.skipped}"
-                )
+                println("SNU Now page $page synced: upserted=${result.upserted}, total=${result.total}, skipped=${result.skipped}")
+                if (opt.delayMs > 0) Thread.sleep(opt.delayMs)
             }
         }
 
@@ -185,41 +215,39 @@ class ExtraSnuSyncRunner(
         eventSyncServiceProvider.getIfAvailable()
             ?: throw IllegalStateException("EventSyncService is unavailable. Remove --dumpOnly only when DB settings are configured.")
 
-    private fun filterNewExtraSnuEvents(events: List<ProgramEvent>): List<ProgramEvent> {
-        val repository = eventRepositoryProvider.getIfAvailable() ?: return events
-        return events.filter { event ->
-            val applyLink = event.extraSnuApplyLink() ?: return@filter true
+    private fun filterNewExtraSnuEvents(events: List<ProgramEvent>, dumpOnly: Boolean): List<ProgramEvent> {
+        return filterNewByApplyLink(
+            items = events,
+            dumpOnly = dumpOnly,
+            applyLinkOf = { it.extraSnuApplyLink() },
+        ).items
+    }
+
+    private fun <T> filterNewByApplyLink(
+        items: List<T>,
+        dumpOnly: Boolean,
+        applyLinkOf: (T) -> String?,
+    ): ExistingFilterResult<T> {
+        if (dumpOnly) {
+            return ExistingFilterResult(items = items, skipped = 0)
+        }
+        val repository = eventRepositoryProvider.getIfAvailable()
+            ?: return ExistingFilterResult(items = items, skipped = 0)
+        val filtered = items.filter { item ->
+            val applyLink = applyLinkOf(item) ?: return@filter true
             !repository.existsByApplyLink(applyLink)
         }
+        return ExistingFilterResult(
+            items = filtered,
+            skipped = items.size - filtered.size,
+        )
     }
 
-    private fun isNewSnuNowApplyLink(applyLink: String): Boolean {
-        val repository = eventRepositoryProvider.getIfAvailable() ?: return true
-        return !repository.existsByApplyLink(applyLink)
-    }
-
-    private fun enrichNewSnuNowEvents(
+    private fun enrichSnuNowEvents(
         events: List<CrawledProgramEvent>,
         batchSize: Int,
     ): List<CrawledProgramEvent> {
-        val repository = eventRepositoryProvider.getIfAvailable()
-        val parserTargets = events.filter { event ->
-            val applyLink = event.applyLink?.trim().orEmpty()
-            if (!applyLink.isSnunowEventLink()) {
-                false
-            } else if (repository == null) {
-                true
-            } else {
-                !repository.existsByApplyLink(applyLink)
-            }
-        }
-
-        // SNU Now는 applyLink가 이미 존재하면 재동기화하지 않는다.
-        // 기존 행사는 AI parser만 건너뛰고 raw crawler 값으로 sync하면
-        // organization/category 등 이미 저장된 값이 덮어써질 수 있다.
-        if (parserTargets.isEmpty()) return emptyList()
-
-        return eliceEventParserClient.enrich(parserTargets, batchSize)
+        return eliceEventParserClient.enrich(events, batchSize)
     }
 
     private fun filterEventsWithParsedDetail(
@@ -239,6 +267,11 @@ class ExtraSnuSyncRunner(
 
 private data class DetailFilterResult(
     val events: List<CrawledProgramEvent>,
+    val skipped: Int,
+)
+
+private data class ExistingFilterResult<T>(
+    val items: List<T>,
     val skipped: Int,
 )
 
@@ -358,9 +391,6 @@ private fun DetailSession.toCrawledDetailSession(): CrawledDetailSession =
         startTime = startTime,
         endTime = endTime
     )
-
-private fun String.isSnunowEventLink(): Boolean =
-    startsWith("https://www.snu.ac.kr/snunow/events")
 
 private fun CrawledProgramEvent.parserKey(): String =
     dataSeq?.takeIf { it.isNotBlank() } ?: applyLink?.takeIf { it.isNotBlank() } ?: title.orEmpty()

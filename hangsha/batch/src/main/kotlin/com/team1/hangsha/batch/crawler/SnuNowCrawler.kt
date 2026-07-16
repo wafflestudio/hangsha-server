@@ -25,10 +25,7 @@ class SnuNowCrawler(
         .followRedirects(true)
         .build(),
 ) {
-    fun crawl(
-        opt: CrawlOptions,
-        shouldFetchDetail: (String) -> Boolean = { true },
-    ): List<CrawledProgramEvent> {
+    fun crawl(opt: CrawlOptions): List<CrawledProgramEvent> {
         require(opt.maxPages > 0) { "maxPages must be positive" }
         require(opt.startPage > 0) { "startPage must be positive" }
 
@@ -37,15 +34,7 @@ class SnuNowCrawler(
         val lastPage = opt.startPage + opt.maxPages - 1
 
         for (page in opt.startPage..lastPage) {
-            val listUrl = buildListUrl(
-                page = page,
-                df = opt.df,
-                dt = opt.dt,
-                qt = opt.qt,
-                q = opt.q,
-            )
-            val html = fetch(listUrl, referer = "$baseUrl/snunow/events") ?: break
-            val parsed = parseListHtml(html)
+            val parsed = crawlPage(page, opt) ?: break
 
             if (parsed.hasNoResultsMessage) {
                 if (debug) println("[SNU-CALENDAR] page=$page no-results message, stopping.")
@@ -64,31 +53,47 @@ class SnuNowCrawler(
 
             if (debug) println("[SNU-CALENDAR] page=$page listItems=${parsed.items.size} newItems=${newItems.size}")
 
-            newItems.forEach { item ->
-                val detailUrl = canonicalDetailUrl(item.bbsidx)
-                if (!shouldFetchDetail(detailUrl)) {
-                    if (debug) println("[SNU-CALENDAR] skip existing detail url=$detailUrl")
-                    return@forEach
-                }
-
-                val detailHtml = fetch(detailUrl, referer = listUrl)
-                val event = if (detailHtml == null) {
-                    item.toFallbackEvent(detailUrl)
-                } else {
-                    parseDetailHtml(detailHtml, item, detailUrl)
-                }
-                if (event != null) {
-                    result += event
-                }
-
-                if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
-            }
+            result += enrichDetails(newItems, referer = buildListUrl(page, opt))
 
             if (delayMsBetweenPages > 0) Thread.sleep(delayMsBetweenPages)
         }
 
         return result
     }
+
+    fun crawlPage(page: Int, opt: CrawlOptions): ParsedListPage? {
+        val listUrl = buildListUrl(page, opt)
+        val html = fetch(listUrl, referer = "$baseUrl/snunow/events") ?: return null
+        return parseListHtml(html)
+    }
+
+    fun enrichDetails(items: List<ListItem>, referer: String): List<CrawledProgramEvent> {
+        val result = mutableListOf<CrawledProgramEvent>()
+        items.forEach { item ->
+            val detailUrl = canonicalApplyLink(item)
+            val detailHtml = fetch(detailUrl, referer = referer)
+            val event = if (detailHtml == null) {
+                item.toFallbackEvent(detailUrl)
+            } else {
+                parseDetailHtml(detailHtml, item, detailUrl)
+            }
+            if (event != null) {
+                result += event
+            }
+
+            if (delayMsBetweenDetails > 0) Thread.sleep(delayMsBetweenDetails)
+        }
+        return result
+    }
+
+    fun buildListUrl(page: Int, opt: CrawlOptions): String =
+        buildListUrl(
+            page = page,
+            df = opt.df,
+            dt = opt.dt,
+            qt = opt.qt,
+            q = opt.q,
+        )
 
     fun buildListUrl(page: Int, df: String? = null, dt: String? = null, qt: String? = null, q: String? = null): String {
         val builder = "$baseUrl/snunow/events".toHttpUrl().newBuilder()
@@ -103,6 +108,9 @@ class SnuNowCrawler(
         }
         return builder.build().toString()
     }
+
+    fun canonicalApplyLink(item: ListItem): String =
+        canonicalDetailUrl(item.bbsidx)
 
     fun parseListHtml(html: String): ParsedListPage {
         val doc = Jsoup.parse(html, baseUrl)
