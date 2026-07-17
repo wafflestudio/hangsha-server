@@ -8,6 +8,7 @@ data class UserDto(
     val username: String?,
     val email: String?,
     val profileImageUrl: String,
+    val tutorialState: Map<String, Boolean> = emptyMap(),
     val interestCategories: List<ListInterestCategoryResponse.Item> = emptyList()
 ) {
     constructor(
@@ -20,6 +21,7 @@ data class UserDto(
         profileImageUrl = user.profileImageUrl ?: "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax1dvc8vmenm/b/hangsha-asset/o/default/43513b43-2f84-4f0f-8de8-7d61120fe3aa.png",
         // default-profile.png는 oci에 업로드 해 두었음.
 
+        tutorialState = user.tutorialState ?: emptyMap(),
         interestCategories = interestCategories
     )
 }

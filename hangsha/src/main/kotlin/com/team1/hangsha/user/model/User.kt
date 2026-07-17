@@ -16,6 +16,8 @@ data class User (
     var profileImageUrl: String? = null,
     @Column("is_admin")
     var isAdmin: Boolean = false,
+    @Column("tutorial_state")
+    var tutorialState: Map<String, Boolean>? = emptyMap(),
     @CreatedDate
     var createdAt: Instant? = null,
     @LastModifiedDate

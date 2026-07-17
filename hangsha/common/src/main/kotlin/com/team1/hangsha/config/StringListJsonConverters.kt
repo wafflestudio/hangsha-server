@@ -23,3 +23,19 @@ class JsonToStringListConverter : Converter<String, List<String>> {
             .getOrElse { emptyList() }
     }
 }
+
+@WritingConverter
+class BooleanMapToJsonConverter : Converter<Map<String, Boolean>, String> {
+    override fun convert(source: Map<String, Boolean>): String =
+        mapper.writeValueAsString(source)
+}
+
+@ReadingConverter
+class JsonToBooleanMapConverter : Converter<String, Map<String, Boolean>> {
+    override fun convert(source: String): Map<String, Boolean> {
+        val s = source.trim()
+        if (s.isEmpty()) return emptyMap()
+        return runCatching { mapper.readValue<Map<String, Boolean>>(s) }
+            .getOrElse { emptyMap() }
+    }
+}

@@ -311,6 +311,18 @@ class UserService(
         return UserDto(user, interests)
     }
 
+    fun updateTutorialState(userId: Long, tutorialState: Map<String, Boolean>) {
+        if (tutorialState.keys.any { it.isBlank() }) {
+            throw DomainException(ErrorCode.INVALID_REQUEST, "tutorialState key는 빈 문자열일 수 없습니다")
+        }
+
+        val user = userRepository.findById(userId)
+            .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
+
+        user.tutorialState = tutorialState
+        userRepository.save(user)
+    }
+
     fun deleteMe(userId: Long) {
         val user = userRepository.findById(userId)
             .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
