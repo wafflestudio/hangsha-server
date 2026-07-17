@@ -148,7 +148,6 @@ class SnuNowCrawler(
         } else {
             parseBestEventDateTime(contentLines, listPeriod.start)
         }
-        val location = parseLocation(contentLines)
         val imageUrl = extractImageUrl(doc) ?: listItem.imageUrl
         val tags = emptyList<String>()
 
@@ -156,10 +155,10 @@ class SnuNowCrawler(
         val applyEnd = if (listRangeIsApplyPeriod) listPeriod.end else null
         val activityStart = if (listRangeIsApplyPeriod) null else detailDateTime?.startDate ?: listPeriod.start
         val activityEnd = if (listRangeIsApplyPeriod) null else detailDateTime?.endDate ?: listPeriod.end
-        val session = if (activityStart != null || detailDateTime?.startTime != null || location != null) {
+        val session = if (activityStart != null || detailDateTime?.startTime != null) {
             CrawledDetailSession(
                 round = 1,
-                location = location,
+                location = null,
                 startDate = activityStart,
                 endDate = activityEnd ?: activityStart,
                 startTime = detailDateTime?.startTime,
@@ -283,19 +282,6 @@ class SnuNowCrawler(
             .lines()
             .map { Jsoup.parse(it).text().normalize() }
             .filter { it.isNotBlank() }
-    }
-
-    private fun parseLocation(lines: List<String>): String? {
-        lines.forEach { line ->
-            if (!line.contains("장소")) return@forEach
-            parseLocationFromLine(line)?.let { return it }
-        }
-        return null
-    }
-
-    private fun parseLocationFromLine(line: String): String? {
-        val m = Regex("""장소\s*[:：]?\s*(.+)$""").find(line) ?: return null
-        return m.groupValues[1].normalize().takeIf { it.isNotBlank() }
     }
 
     private fun parseBestEventDateTime(lines: List<String>, fallbackDate: String?): ParsedDateTime? {

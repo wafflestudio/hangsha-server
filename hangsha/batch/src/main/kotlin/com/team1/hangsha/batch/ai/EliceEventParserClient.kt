@@ -204,14 +204,13 @@ For each input event, return exactly one item with this schema:
   "id": "same id from input",
   "organization": string or null,
   "category": one of ["교육(특강/세미나)", "공모전/경진대회", "현장학습/인턴", "사회공헌(봉사)", "학습/진로상담", "OpenLnL", "기타"],
+  "location": string or null,
   "applyStart": "yyyy-MM-ddTHH:mm:ss" or null,
   "applyEnd": "yyyy-MM-ddTHH:mm:ss" or null,
   "eventStart": "yyyy-MM-ddTHH:mm:ss" or null,
-  "eventEnd": "yyyy-MM-ddTHH:mm:ss" or null,
-  "warnings": string[]
+  "eventEnd": "yyyy-MM-ddTHH:mm:ss" or null
 }
 
-Do not return status. The backend will infer recruitment status.
 Use currentDate's year when a date omits the year.
 If a date range crosses December to January, use the next year for January.
 
@@ -221,17 +220,12 @@ Organization policy:
 3. If no organizer is explicitly stated, return null. Do not guess.
 
 Choose the closest category by semantic intent rather than exact wording; use "기타" only when no category reasonably fits.
+Return location only for a concrete confirmed venue, room, building, or online location; return null when the venue is undecided, optional, or participant-selected.
 
 Period policy:
-1. If listPeriodText is a single date, it is usually the event period.
-2. If listPeriodText is a range and mainContentText contains "모집" or "신청", treat it as apply period.
-3. If listPeriodText is a range and mainContentText does not contain "모집" or "신청", treat it as event period.
-4. If the event period is needed, refine it from lines containing "시간", "기간", or "일시".
-5. For apply period, prefer dates near "신청", "접수", "지원", "등록", "모집", "기한", "마감", or "까지".
-6. Deadline-only expressions such as "(~7/7 (화) 15시까지)" or "신청 접수 부탁드립니다.(~7/7 (화) 15시까지)" mean applyEnd.
-7. For event period, prefer dates near "일시", "일정", "행사", "교육", "강의", "세미나", "워크숍", "운영", or "활동기간".
-8. If listPeriodText and explicit rule-based cues do not identify either apply period or event period, infer the most plausible value from mainContentText instead of leaving it null when a date is clearly present.
-9. If the list range is treated as apply period, event period may be null only when mainContentText has no plausible event date.
+Infer applyStart/applyEnd as the application, registration, submission, or recruitment period.
+Infer eventStart/eventEnd as when the event, activity, class, exhibition, performance, or program actually happens.
+Do not copy an apply period into eventStart/eventEnd unless the content clearly says they are the same. Return null for unclear periods.
 """
     }
 }
@@ -240,7 +234,6 @@ private data class PromptEvent(
     val id: String,
     val title: String?,
     val majorTypes: List<String>,
-    val listPeriodText: String?,
     val mainContentText: String?,
 )
 
@@ -248,11 +241,11 @@ data class ParsedEvent(
     val id: String,
     val organization: String? = null,
     val category: String? = null,
+    val location: String? = null,
     val applyStart: String? = null,
     val applyEnd: String? = null,
     val eventStart: String? = null,
     val eventEnd: String? = null,
-    val warnings: List<String> = emptyList(),
 )
 
 private fun CrawledProgramEvent.toPromptEvent(): PromptEvent =
@@ -260,34 +253,54 @@ private fun CrawledProgramEvent.toPromptEvent(): PromptEvent =
         id = parserKey(),
         title = title,
         majorTypes = majorTypes,
-        listPeriodText = listOfNotNull(
-            buildRangeText(applyStart, applyEnd),
-            buildRangeText(activityStart, activityEnd),
-        ).joinToString(" / ").takeIf { it.isNotBlank() },
         mainContentText = mainContentHtml?.toPlainText()?.take(MAX_CONTENT_CHARS),
     )
 
 private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent {
-    val contentFallback = extractContentPeriodFallback(mainContentHtml)
     val organization = parsed.organization.cleanOrganization()
     val category = parsed.category?.clean()?.takeIf { it in PROGRAM_TYPES } ?: "기타"
+    val parsedLocation = parsed.location.clean()
     val mergedMajorTypes = mergeMajorTypes(majorTypes, organization, category)
 
-    val fallbackApplyStartDate = contentFallback.applyStart?.toLocalDate()?.toString()
-    val fallbackApplyEndDate = contentFallback.applyEnd?.toLocalDate()?.toString()
-    val applyEndDate = parsed.applyEnd.toLocalDateString() ?: applyEnd ?: fallbackApplyEndDate
-    val applyStartDate = parsed.applyStart.toLocalDateString()
-        ?: applyStart
-        ?: fallbackApplyStartDate
-        ?: applyEndDate?.let { LocalDate.now(ZoneId.of("Asia/Seoul")).toString() }
-    val eventStartDateTime = parsed.eventStart.toLocalDateTimeOrNull()
-        ?: contentFallback.eventStart.takeIf { activityStart == null }
-    val eventEndDateTime = parsed.eventEnd.toLocalDateTimeOrNull()
-        ?: contentFallback.eventEnd.takeIf { activityEnd == null }
-    val eventStartDate = eventStartDateTime?.toLocalDate()?.toString() ?: activityStart
-    val eventEndDate = eventEndDateTime?.toLocalDate()?.toString() ?: activityEnd
-    val existingLocation = detailSessions.firstNotNullOfOrNull { it.location?.clean() }
-    val aiDetailSession = buildDetailSession(eventStartDateTime, eventEndDateTime, existingLocation)
+    val parsedApplyStartDate = parsed.applyStart.toLocalDateString()
+    val parsedApplyEndDate = parsed.applyEnd.toLocalDateString()
+    val parsedEventStartDateTime = parsed.eventStart.toLocalDateTimeOrNull()
+    val parsedEventEndDateTime = parsed.eventEnd.toLocalDateTimeOrNull()
+    val hasParsedPeriod = listOf(
+        parsedApplyStartDate,
+        parsedApplyEndDate,
+        parsedEventStartDateTime,
+        parsedEventEndDateTime,
+    ).any { it != null }
+
+    val fallback = if (hasParsedPeriod) ContentPeriodFallback() else extractContentPeriodFallback(mainContentHtml)
+    val fallbackApplyStartDate = fallback.applyStart?.toLocalDate()?.toString()
+    val fallbackApplyEndDate = fallback.applyEnd?.toLocalDate()?.toString()
+    val applyEndDate = if (hasParsedPeriod) {
+        parsedApplyEndDate
+    } else {
+        applyEnd ?: fallbackApplyEndDate
+    }
+    val applyStartDate = if (hasParsedPeriod) {
+        parsedApplyStartDate
+    } else {
+        applyStart
+            ?: fallbackApplyStartDate
+            ?: applyEndDate?.let { LocalDate.now(ZoneId.of("Asia/Seoul")).toString() }
+    }
+    val eventStartDateTime = if (hasParsedPeriod) parsedEventStartDateTime else fallback.eventStart
+    val eventEndDateTime = if (hasParsedPeriod) parsedEventEndDateTime else fallback.eventEnd
+    val eventStartDate = if (hasParsedPeriod) {
+        eventStartDateTime?.toLocalDate()?.toString()
+    } else {
+        activityStart ?: eventStartDateTime?.toLocalDate()?.toString()
+    }
+    val eventEndDate = if (hasParsedPeriod) {
+        eventEndDateTime?.toLocalDate()?.toString()
+    } else {
+        activityEnd ?: eventEndDateTime?.toLocalDate()?.toString()
+    }
+    val aiDetailSession = buildDetailSession(eventStartDateTime, eventEndDateTime, parsedLocation)
 
     return copy(
         majorTypes = mergedMajorTypes,
@@ -295,6 +308,7 @@ private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent 
         applyEnd = applyEndDate,
         activityStart = eventStartDate,
         activityEnd = eventEndDate,
+        location = parsedLocation,
         status = inferStatus(applyStartDate, applyEndDate, eventStartDate, eventEndDate) ?: status,
         detailSessions = aiDetailSession?.let { listOf(it) } ?: detailSessions,
         isPeriodEvent = if (aiDetailSession != null) false else isPeriodEvent,
@@ -389,17 +403,6 @@ private fun String?.toLocalDateTimeOrNull(): LocalDateTime? {
 private fun String?.toLocalDateOrNull(): LocalDate? {
     val value = clean() ?: return null
     return runCatching { LocalDate.parse(value.take(10)) }.getOrNull()
-}
-
-private fun buildRangeText(start: String?, end: String?): String? {
-    val s = start.clean()
-    val e = end.clean()
-    return when {
-        s != null && e != null && s != e -> "$s ~ $e"
-        s != null -> s
-        e != null -> e
-        else -> null
-    }
 }
 
 private fun extractContentPeriodFallback(html: String?): ContentPeriodFallback {

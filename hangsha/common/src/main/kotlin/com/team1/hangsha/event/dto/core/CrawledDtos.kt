@@ -20,6 +20,7 @@ data class CrawledProgramEvent(
     val applyCount: Int? = null,
     val capacity: Int? = null,
     val imageUrl: String? = null,
+    val location: String? = null,
     val tags: List<String> = emptyList(),
     val mainContentHtml: String? = null,
     val isPeriodEvent: Boolean? = null,

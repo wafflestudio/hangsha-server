@@ -74,6 +74,7 @@ class EventSyncService(
             } else {
                 patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
             }
+            val crawledLocation = e.location?.trim()?.takeIf { it.isNotBlank() }
             val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
@@ -88,12 +89,12 @@ class EventSyncService(
                         UnitSpec(
                             eventStart = parseSessionStart(s),
                             eventEnd = parseSessionEnd(s),
-                            location = s.location?.trim()?.takeIf { it.isNotBlank() }
+                            location = crawledLocation
                         )
                     }
                 } else {
-                    val (eventStart, eventEnd, location) = deriveEventPeriodAndLocation(e, sessions)
-                    listOf(UnitSpec(eventStart, eventEnd, location?.trim()?.takeIf { it.isNotBlank() }))
+                    val (eventStart, eventEnd) = deriveEventPeriod(e, sessions)
+                    listOf(UnitSpec(eventStart, eventEnd, crawledLocation))
                 }
 
             for (spec in unitSpecs) {
@@ -280,22 +281,21 @@ class EventSyncService(
         }
     }
 
-    private fun deriveEventPeriodAndLocation(
+    private fun deriveEventPeriod(
         e: CrawledProgramEvent,
         sessions: List<CrawledDetailSession>
-    ): Triple<LocalDateTime?, LocalDateTime?, String?> {
+    ): Pair<LocalDateTime?, LocalDateTime?> {
         if (sessions.isNotEmpty()) {
             val starts = sessions.mapNotNull { parseSessionStart(it) }
             val ends = sessions.mapNotNull { parseSessionEnd(it) }
             val start = starts.minOrNull()
             val end = ends.maxOrNull()
-            val location = sessions.firstNotNullOfOrNull { it.location?.trim()?.takeIf { s -> s.isNotBlank() } }
-            return Triple(start, end, location)
+            return start to end
         }
 
         val start = e.activityStart?.let { LocalDate.parse(it).atStartOfDay() }
         val end = e.activityEnd?.let { LocalDate.parse(it).atTime(23, 59, 59) }
-        return Triple(start, end, null)
+        return start to end
     }
 
     private fun parseSessionStart(s: CrawledDetailSession): LocalDateTime? {
