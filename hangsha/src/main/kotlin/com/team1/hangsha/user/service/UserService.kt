@@ -17,6 +17,7 @@ import com.team1.hangsha.user.AuthCookieSupport
 import com.team1.hangsha.user.model.RefreshToken
 import com.team1.hangsha.user.TokenHasher
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.common.extentions.getDisplayLength
 import org.mindrot.jbcrypt.BCrypt
 import org.springframework.stereotype.Service
@@ -36,6 +37,7 @@ class UserService(
     private val cookieSupport: AuthCookieSupport,
     private val userPreferenceService: UserPreferenceService,
     private val ociUploadService: OciUploadService,
+    private val objectMapper: ObjectMapper,
     @Value("\${jwt.refresh-expiration-ms}") private val refreshExpirationMs: Long,
 ) {
 
@@ -71,7 +73,7 @@ class UserService(
             ),
         )
 
-        return UserDto(user)
+        return UserDto(user, objectMapper = objectMapper)
     }
 
     private fun validatePassword(password: String) {
@@ -308,18 +310,18 @@ class UserService(
             .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
         val interests = userPreferenceService.listInterestCategory(userId)
 
-        return UserDto(user, interests)
+        return UserDto(user, interests, objectMapper)
     }
 
-    fun updateTutorialState(userId: Long, tutorialState: Map<String, Boolean>) {
-        if (tutorialState.keys.any { it.isBlank() }) {
-            throw DomainException(ErrorCode.INVALID_REQUEST, "tutorialState key는 빈 문자열일 수 없습니다")
+    fun updateTutorialState(userId: Long, tutorialState: JsonNode) {
+        if (!tutorialState.isObject) {
+            throw DomainException(ErrorCode.INVALID_REQUEST, "tutorialState는 JSON object여야 합니다")
         }
 
         val user = userRepository.findById(userId)
             .orElseThrow { DomainException(ErrorCode.USER_NOT_FOUND) }
 
-        user.tutorialState = tutorialState
+        user.tutorialState = objectMapper.writeValueAsString(tutorialState)
         userRepository.save(user)
     }
 

@@ -1,8 +1,6 @@
 package com.team1.hangsha.config
 
 import com.team1.hangsha.com.team1.hangsha.config.JsonToStringListConverter
-import com.team1.hangsha.com.team1.hangsha.config.BooleanMapToJsonConverter
-import com.team1.hangsha.com.team1.hangsha.config.JsonToBooleanMapConverter
 import com.team1.hangsha.com.team1.hangsha.config.StringListToJsonConverter
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.jdbc.repository.config.EnableJdbcAuditing
@@ -16,7 +14,5 @@ class DatabaseConfig : AbstractJdbcConfiguration() {
     override fun userConverters(): MutableList<Any> = mutableListOf(
         StringListToJsonConverter(),
         JsonToStringListConverter(),
-        BooleanMapToJsonConverter(),
-        JsonToBooleanMapConverter(),
     )
 }

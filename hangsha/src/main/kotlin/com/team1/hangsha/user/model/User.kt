@@ -17,7 +17,7 @@ data class User (
     @Column("is_admin")
     var isAdmin: Boolean = false,
     @Column("tutorial_state")
-    var tutorialState: Map<String, Boolean>? = emptyMap(),
+    var tutorialState: String? = null,
     @CreatedDate
     var createdAt: Instant? = null,
     @LastModifiedDate
