@@ -11,7 +11,6 @@ import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.SearchEventItem
 import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.dto.response.SearchHighlight
-import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventQueryRepository
 import com.team1.hangsha.event.repository.EventRepository
@@ -209,34 +208,6 @@ class EventService(
         )
     }
 
-    fun searchTitle(
-        query: String,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val q = query.trim()
-        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
-
-        val result = manticoreSearchService.searchByTitle(q)
-        // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, page, size, userId)
-    }
-
-    fun searchContent(
-        query: String,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val q = query.trim()
-        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
-
-        val result = manticoreSearchService.searchByContent(q)
-        // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, page, size, userId)
-    }
-
     fun search(
         query: String,
         page: Int,
@@ -318,41 +289,6 @@ class EventService(
         }
 
         return SearchEventResponse(page = safePage, size = safeSize, total = filteredEvents.size, items = items)
-    }
-
-    private fun buildSearchResponse(
-        result: ManticoreSearchService.SearchResult,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val safePage = max(1, page)
-        val safeSize = max(1, size)
-        val offset = (safePage - 1) * safeSize
-
-        // MySQL에서 date순으로 정렬된 전체 결과를 가져온 뒤 page/size로 슬라이싱
-        val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
-        val events = allEvents.drop(offset).take(safeSize)
-
-        val auth = userId != null
-        val interestPriorityByCategoryId = loadInterestMap(userId)
-        val bookmarkedIds: Set<Long> =
-            if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
-                userId!!, events.mapNotNull { it.id }
-            ) else emptySet()
-
-        val items = events.map { e ->
-            val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
-            val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
-            e.toDto(auth, matchedPriority, isBookmarked)
-        }
-
-        return TitleSearchEventResponse(
-            page = safePage,
-            size = safeSize,
-            total = result.total,
-            items = items,
-        )
     }
 
     private fun loadInterestMap(userId: Long?): Map<Long, Int> {
