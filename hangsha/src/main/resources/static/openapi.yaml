@@ -395,16 +395,6 @@ components:
               type: array
               items: { $ref: '#/components/schemas/EventDto' }
 
-    TitleSearchEventResponse:
-      allOf:
-        - $ref: '#/components/schemas/PageMeta'
-        - type: object
-          required: [items]
-          properties:
-            items:
-              type: array
-              items: { $ref: '#/components/schemas/EventDto' }
-
     DetailEventResponse:
       allOf:
         - $ref: '#/components/schemas/EventDto'
@@ -1213,38 +1203,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DayEventResponse' }
-
-  /events/search/title:
-    get:
-      tags: [Events]
-      summary: 이벤트 제목 검색 (필터링과 별개 기능, Public + Auto personalization on login)
-      description: |
-        "제목 검색" 전용 API입니다. (필터링 기능과 별개)
-        - query는 title contains 검색에 사용됩니다.
-        - (로그인 O, Authorization: Bearer <token> 제공 시) 개인화가 자동 적용됩니다:
-          1) excluded keyword: title에 제외 키워드가 포함된 이벤트는 항상 제외
-          2) interest category: 유저 관심 카테고리 priority 기반으로 매칭 이벤트를 항상 상단에 우선 노출
-      security: []
-      parameters:
-        - in: query
-          name: query
-          required: true
-          schema: { type: string, minLength: 1 }
-          description: "이벤트 제목(title) contains 검색"
-
-        - in: query
-          name: page
-          schema: { type: integer, default: 1 }
-        - in: query
-          name: size
-          schema: { type: integer, default: 20 }
-
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TitleSearchEventResponse' }
 
   /events/{eventId}:
     get:

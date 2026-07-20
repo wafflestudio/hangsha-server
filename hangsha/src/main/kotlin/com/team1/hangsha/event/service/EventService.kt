@@ -11,12 +11,12 @@ import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.SearchEventItem
 import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.dto.response.SearchHighlight
-import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventQueryRepository
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.search.ManticoreSearchService
 import com.team1.hangsha.search.SearchHighlighter
+import com.team1.hangsha.user.repository.UserExcludedKeywordRepository
 import com.team1.hangsha.user.repository.UserInterestCategoryRepository
 import org.jsoup.Jsoup
 import org.springframework.stereotype.Service
@@ -31,6 +31,7 @@ class EventService(
     private val userInterestCategoryRepository: UserInterestCategoryRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val manticoreSearchService: ManticoreSearchService,
+    private val userExcludedKeywordRepository: UserExcludedKeywordRepository,
 ) {
 
     fun getMonthEvents(
@@ -207,34 +208,6 @@ class EventService(
         )
     }
 
-    fun searchTitle(
-        query: String,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val q = query.trim()
-        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
-
-        val result = manticoreSearchService.searchByTitle(q)
-        // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, page, size, userId)
-    }
-
-    fun searchContent(
-        query: String,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val q = query.trim()
-        if (q.isEmpty()) throw DomainException(ErrorCode.INVALID_REQUEST, "query는 비어있을 수 없습니다")
-
-        val result = manticoreSearchService.searchByContent(q)
-        // TODO: 제외 키워드 필터 적용 여부 결정 필요
-        return buildSearchResponse(result, page, size, userId)
-    }
-
     fun search(
         query: String,
         page: Int,
@@ -246,12 +219,43 @@ class EventService(
 
         val result = manticoreSearchService.searchUnified(q)
 
+        /**
+         * TODO :
+         * 2. sorting
+         * 3. categrory filtering
+         */
+
         val safePage = max(1, page)
         val safeSize = max(1, size)
         val offset = (safePage - 1) * safeSize
 
         val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
-        val events = allEvents.drop(offset).take(safeSize)
+
+        // main_content_html 태그 제거 텍스트 캐시: 제외 필터와 하이라이트에서 재사용 (이벤트당 최대 1회 파싱)
+        val contentTextCache = HashMap<Long, String?>()
+        fun contentTextOf(e: Event): String? =
+            contentTextCache.getOrPut(requireNotNull(e.id)) {
+                e.mainContentHtml?.let { Jsoup.parse(it).text() }
+            }
+
+        // 1. 키워드 제외: 로그인 유저의 제외 키워드가 title 또는 content(태그 제거 텍스트)에 포함되면 제거
+        val excludedKeywords: List<String> =
+            if (userId != null) userExcludedKeywordRepository
+                .findAllByUserIdOrderByCreatedAtDescIdDesc(userId)
+                .map { it.keyword.lowercase() }
+                .filter { it.isNotBlank() }
+            else emptyList()
+
+        fun isExcluded(e: Event): Boolean {
+            if (excludedKeywords.isEmpty()) return false
+            val title = e.title.lowercase()
+            if (excludedKeywords.any { title.contains(it) }) return true
+            val content = contentTextOf(e)?.lowercase() ?: return false
+            return excludedKeywords.any { content.contains(it) }
+        }
+
+        val filteredEvents = allEvents.filterNot { isExcluded(it) }
+        val events = filteredEvents.drop(offset).take(safeSize)
 
         val auth = userId != null
         val interestPriorityByCategoryId = loadInterestMap(userId)
@@ -263,7 +267,7 @@ class EventService(
         val items = events.map { e ->
             val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
             val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
-            val rawContent = e.mainContentHtml?.let { Jsoup.parse(it).text() }
+            val rawContent = contentTextOf(e)
 
             SearchEventItem(
                 event = e.toDto(auth, matchedPriority, isBookmarked),
@@ -284,42 +288,7 @@ class EventService(
             )
         }
 
-        return SearchEventResponse(page = safePage, size = safeSize, total = result.total, items = items)
-    }
-
-    private fun buildSearchResponse(
-        result: ManticoreSearchService.SearchResult,
-        page: Int,
-        size: Int,
-        userId: Long?,
-    ): TitleSearchEventResponse {
-        val safePage = max(1, page)
-        val safeSize = max(1, size)
-        val offset = (safePage - 1) * safeSize
-
-        // MySQL에서 date순으로 정렬된 전체 결과를 가져온 뒤 page/size로 슬라이싱
-        val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
-        val events = allEvents.drop(offset).take(safeSize)
-
-        val auth = userId != null
-        val interestPriorityByCategoryId = loadInterestMap(userId)
-        val bookmarkedIds: Set<Long> =
-            if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
-                userId!!, events.mapNotNull { it.id }
-            ) else emptySet()
-
-        val items = events.map { e ->
-            val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
-            val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
-            e.toDto(auth, matchedPriority, isBookmarked)
-        }
-
-        return TitleSearchEventResponse(
-            page = safePage,
-            size = safeSize,
-            total = result.total,
-            items = items,
-        )
+        return SearchEventResponse(page = safePage, size = safeSize, total = filteredEvents.size, items = items)
     }
 
     private fun loadInterestMap(userId: Long?): Map<Long, Int> {

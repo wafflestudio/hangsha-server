@@ -4,7 +4,7 @@ import org.springframework.stereotype.Service
 
 /**
  * manticoreClient, kiwiTokenizerClient를 이용하여 searchService를 구현한다.
- * EventService의 searchTitle, searchContent, search에서 이를 사용한다.
+ * EventService의 search에서 이를 사용한다.
  */
 @Service
 class ManticoreSearchService(
@@ -19,16 +19,6 @@ class ManticoreSearchService(
         val rawWords: List<String>,    // 공백 구분 원본 단어 (highlight primary)
         val kiwiTokens: List<String>,  // KiWi 명사 토큰 (highlight fallback)
     )
-
-    fun searchByTitle(query: String): SearchResult {
-        val tokenized = kiwiTokenizerClient.tokenize(query)
-        return doSearch(fields = listOf("title"), tokenizedQuery = tokenized, rawQuery = query)
-    }
-
-    fun searchByContent(query: String): SearchResult {
-        val tokenized = kiwiTokenizerClient.tokenize(query)
-        return doSearch(fields = listOf("content"), tokenizedQuery = tokenized, rawQuery = query)
-    }
 
     fun searchUnified(query: String): SearchResult {
         val tokenized = kiwiTokenizerClient.tokenize(query)

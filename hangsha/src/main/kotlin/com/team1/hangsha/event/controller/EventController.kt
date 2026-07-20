@@ -3,7 +3,6 @@ package com.team1.hangsha.event.controller
 import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
 import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.SearchEventResponse
-import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
 import com.team1.hangsha.event.dto.response.EventCountResponse
 import com.team1.hangsha.event.service.EventService
@@ -92,34 +91,6 @@ class EventController(
             orgIds = orgIds,
             userId = user?.id,
             applyExcludedKeywords = applyExcludedKeywords,
-        )
-
-    @GetMapping("/search/title")
-    fun searchTitle(
-        @Parameter(hidden = true) @LoggedInUser user: User?,
-        @RequestParam("query") query: String,
-        @RequestParam("page", defaultValue = "1") page: Int,
-        @RequestParam("size", defaultValue = "20") size: Int,
-    ): TitleSearchEventResponse =
-        eventService.searchTitle(
-            query = query,
-            page = page,
-            size = size,
-            userId = user?.id,
-        )
-
-    @GetMapping("/search/content")
-    fun searchContent(
-        @Parameter(hidden = true) @LoggedInUser user: User?,
-        @RequestParam("query") query: String,
-        @RequestParam("page", defaultValue = "1") page: Int,
-        @RequestParam("size", defaultValue = "20") size: Int,
-    ): TitleSearchEventResponse =
-        eventService.searchContent(
-            query = query,
-            page = page,
-            size = size,
-            userId = user?.id,
         )
 
     @GetMapping("/search")
