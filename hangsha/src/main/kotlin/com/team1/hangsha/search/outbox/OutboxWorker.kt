@@ -32,7 +32,7 @@ class OutboxWorker(
                     EventSearchOutbox.Operation.DELETE ->
                         manticoreIndexService.deleteEvent(entry.eventId)
                 }
-                outboxRepository.updateStatus(entryId, "DONE", Instant.now())
+                outboxRepository.deleteById(entryId)
                 log.debug("outbox processed id={} eventId={} op={}", entryId, entry.eventId, entry.operation)
             } catch (e: Exception) {
                 outboxRepository.updateStatus(entryId, "FAILED", Instant.now())
