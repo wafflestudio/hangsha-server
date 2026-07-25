@@ -238,7 +238,7 @@ class EventService(
                 e.mainContentHtml?.let { Jsoup.parse(it).text() }
             }
 
-        // 1. 키워드 제외: 로그인 유저의 제외 키워드가 title 또는 content(태그 제거 텍스트)에 포함되면 제거
+        // 1. 키워드 제외: 로그인 유저의 제외 키워드가 title에 포함되면 제거
         val excludedKeywords: List<String> =
             if (userId != null) userExcludedKeywordRepository
                 .findAllByUserIdOrderByCreatedAtDescIdDesc(userId)
@@ -249,9 +249,7 @@ class EventService(
         fun isExcluded(e: Event): Boolean {
             if (excludedKeywords.isEmpty()) return false
             val title = e.title.lowercase()
-            if (excludedKeywords.any { title.contains(it) }) return true
-            val content = contentTextOf(e)?.lowercase() ?: return false
-            return excludedKeywords.any { content.contains(it) }
+            return excludedKeywords.any { title.contains(it) }
         }
 
         val filteredEvents = allEvents.filterNot { isExcluded(it) }

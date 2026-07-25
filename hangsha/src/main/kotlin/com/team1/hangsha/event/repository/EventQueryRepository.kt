@@ -253,53 +253,6 @@ class EventQueryRepository(
         """.trimIndent()
         return jdbc.query(sql, mapOf("ids" to ids)) { rs, _ -> rs.toEvent() }
     }
-
-    fun countByTitleContains(query: String, userId: Long?): Int {
-        val sql = buildString {
-            append(
-                """
-            SELECT COUNT(*)
-            FROM events e
-            WHERE e.admin_deleted = false
-              AND e.title LIKE :q
-            """.trimIndent()
-            )
-
-            appendExcludedKeywordsFilter(userId)
-        }
-
-        val params = mutableMapOf<String, Any>(
-            "q" to "%$query%"
-        )
-        if (userId != null) params["userId"] = userId
-        return jdbc.queryForObject(sql, params, Int::class.java) ?: 0
-    }
-
-    fun findByTitleContainsPaged(query: String, offset: Int, limit: Int, userId: Long?): List<Event> {
-        val sql = buildString {
-            append(
-                """
-            SELECT e.*
-            FROM events e
-            WHERE e.admin_deleted = false
-              AND e.title LIKE :q
-            """.trimIndent()
-            )
-
-            appendExcludedKeywordsFilter(userId)
-
-            append("\nORDER BY COALESCE(e.event_start, e.apply_start) DESC, e.id DESC")
-            append("\nLIMIT :limit OFFSET :offset")
-        }
-
-        val params = mutableMapOf<String, Any>(
-            "q" to "%$query%",
-            "limit" to max(0, limit),
-            "offset" to max(0, offset),
-        )
-        if (userId != null) params["userId"] = userId
-        return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
-    }
 }
 
 private fun ResultSet.getLocalDateTimeOrNull(column: String): LocalDateTime? =
@@ -353,13 +306,7 @@ private fun StringBuilder.appendExcludedKeywordsFilter(userId: Long?) {
             SELECT 1
             FROM user_excluded_keywords uek
             WHERE uek.user_id = :userId
-              AND (
-                e.title LIKE CONCAT('%', uek.keyword, '%')
-                OR COALESCE(e.organization, '') LIKE CONCAT('%', uek.keyword, '%')
-                OR COALESCE(e.location, '') LIKE CONCAT('%', uek.keyword, '%')
-                OR COALESCE(e.tags, '') LIKE CONCAT('%', uek.keyword, '%')
-                OR COALESCE(e.main_content_html, '') LIKE CONCAT('%', uek.keyword, '%')
-              )
+              AND LOWER(e.title) LIKE CONCAT('%', LOWER(uek.keyword), '%')
           )
         """.trimIndent()
     )
