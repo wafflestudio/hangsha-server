@@ -243,13 +243,14 @@ class EventQueryRepository(
         return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
     }
 
+    /** 검색 전용 조회. 실제 정렬은 EventService.sortByDeadline() 에서 수행하고, 여기선 결정성만 확보한다. */
     fun findVisibleByIds(ids: List<Long>): List<Event> {
         if (ids.isEmpty()) return emptyList()
         val sql = """
             SELECT e.* FROM events e
             WHERE e.id IN (:ids)
               AND e.admin_deleted = false
-            ORDER BY COALESCE(e.event_start, e.apply_start) DESC, e.id DESC
+            ORDER BY e.id DESC
         """.trimIndent()
         return jdbc.query(sql, mapOf("ids" to ids)) { rs, _ -> rs.toEvent() }
     }
