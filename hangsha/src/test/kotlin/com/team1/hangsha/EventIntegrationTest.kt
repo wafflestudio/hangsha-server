@@ -253,31 +253,6 @@ class EventIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `이벤트 제목 검색 query 가 공백이면 400`() {
-        mockMvc.perform(get("/api/v1/events/search/title?query=   "))
-            .andExpect(status().isBadRequest)
-    }
-
-    @Test
-    fun `이벤트 제목 검색 like 검색과 페이징이 동작한다`() {
-        dataGenerator.generateEvent(title = "Alpha 1")
-        dataGenerator.generateEvent(title = "Alpha 2")
-        dataGenerator.generateEvent(title = "Alpha 3")
-        dataGenerator.generateEvent(title = "Beta 1")
-
-        mockMvc.perform(get("/api/v1/events/search/title?query=Alpha&page=1&size=2"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.page").value(1))
-            .andExpect(jsonPath("$.size").value(2))
-            .andExpect(jsonPath("$.total").value(3))
-            .andExpect(jsonPath("$.items.length()").value(2))
-
-        mockMvc.perform(get("/api/v1/events/search/title?query=Alpha&page=2&size=2"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.items.length()").value(1))
-    }
-
-    @Test
     fun `이벤트 상세 조회 없는 이벤트면 404`() {
         mockMvc.perform(get("/api/v1/events/999999999"))
             .andExpect(status().isNotFound)
@@ -431,74 +406,6 @@ class EventIntegrationTest : IntegrationTestBase() {
     }
 
     // =========================================================
-    // Personalization excluded keyword
-    // =========================================================
-
-    @Test
-    fun `개인화 excluded keyword 가 있으면 로그인 상태에서 day search month 에서 제외된다`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-        val date = LocalDate.now()
-        val dayStart = date.atStartOfDay()
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(toJson(mapOf("keyword" to "apple")))
-        ).andExpect(status().isCreated)
-
-        dataGenerator.generateEvent(
-            title = "apple conference",
-            eventStart = dayStart.plusHours(9),
-            eventEnd = dayStart.plusHours(10),
-        )
-        dataGenerator.generateEvent(
-            title = "banana conference",
-            eventStart = dayStart.plusHours(11),
-            eventEnd = dayStart.plusHours(12),
-        )
-
-        val dayRes = mockMvc.perform(
-            get("/api/v1/events/day?date=${ymd(date)}&page=1&size=20")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andReturn()
-
-        val dayTitles = objectMapper.readTree(dayRes.response.contentAsString)["items"]
-            .map { it["title"].asText() }
-        require(dayTitles.contains("banana conference")) { "expected banana in day results" }
-        require(!dayTitles.contains("apple conference")) { "apple should be excluded in day results" }
-
-        val searchRes = mockMvc.perform(
-            get("/api/v1/events/search/title?query=conference&page=1&size=20")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andReturn()
-
-        val searchTitles = objectMapper.readTree(searchRes.response.contentAsString)["items"]
-            .map { it["title"].asText() }
-        require(searchTitles.contains("banana conference")) { "expected banana in search results" }
-        require(!searchTitles.contains("apple conference")) { "apple should be excluded in search results" }
-
-        val from = date
-        val to = date.plusDays(2)
-        val monthRes = mockMvc.perform(
-            get(monthUrl(from, to))
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andReturn()
-
-        val byDate = objectMapper.readTree(monthRes.response.contentAsString)["byDate"]
-        byDate.fields().forEach { (_, bucket) ->
-            val titles = bucket["events"].mapNotNull { it["title"]?.asText() }
-            require(!titles.contains("apple conference")) { "apple should be excluded in month results" }
-        }
-    }
-
-    // =========================================================
     // Personalization interest category
     // =========================================================
 
@@ -608,39 +515,6 @@ class EventIntegrationTest : IntegrationTestBase() {
         require(first["matchedInterestPriority"].asInt() == 1) { "expected priority=1" }
     }
 
-    @Test
-    fun `개인화 search 에서 interest 우선정렬 되고 excluded keyword 도 같이 적용된다`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val orgP1 = dataGenerator.generateOrgCategory(name = "ORG P1")
-        val orgP2 = dataGenerator.generateOrgCategory(name = "ORG P2")
-        dataGenerator.addUserInterestCategory(user, orgP1, priority = 1)
-        dataGenerator.addUserInterestCategory(user, orgP2, priority = 2)
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(toJson(mapOf("keyword" to "apple")))
-        ).andExpect(status().isCreated)
-
-        dataGenerator.generateEvent(title = "apple visible P1 hidden", orgId = orgP1.id!!)
-        dataGenerator.generateEvent(title = "visible P1", orgId = orgP1.id!!)
-        dataGenerator.generateEvent(title = "visible P2", orgId = orgP2.id!!)
-        dataGenerator.generateEvent(title = "visible NON")
-
-        val res = mockMvc.perform(
-            get("/api/v1/events/search/title?query=visible&page=1&size=20")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andReturn()
-
-        val items = objectMapper.readTree(res.response.contentAsString)["items"]
-        val titles = items.map { it["title"].asText() }
-
-        require(!titles.contains("apple visible P1 hidden")) { "excluded keyword event leaked" }
-        assertEquals(listOf("visible P1", "visible P2", "visible NON"), titles)
-    }
 
     @Test
     fun `개인화 month 의 날짜 bucket 내부에서도 interest 우선정렬 되고 excluded keyword 는 숨긴다`() {

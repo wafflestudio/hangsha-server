@@ -221,7 +221,6 @@ class EventService(
 
         /**
          * TODO :
-         * 2. sorting
          * 3. categrory filtering
          */
 
@@ -229,7 +228,7 @@ class EventService(
         val safeSize = max(1, size)
         val offset = (safePage - 1) * safeSize
 
-        val allEvents = eventQueryRepository.findVisibleByIds(result.eventIds)
+        val allEvents = sortByDeadline(eventQueryRepository.findVisibleByIds(result.eventIds))
 
         // main_content_html 태그 제거 텍스트 캐시: 제외 필터와 하이라이트에서 재사용 (이벤트당 최대 1회 파싱)
         val contentTextCache = HashMap<Long, String?>()
@@ -288,6 +287,42 @@ class EventService(
 
         return SearchEventResponse(page = safePage, size = safeSize, total = filteredEvents.size, items = items)
     }
+
+    /**
+     * 검색 결과 정렬.
+     *
+     * 마감임박순(아직 안 지난 행사 오름차순) -> 이미 지난 행사(내림차순) -> 정렬 키가 없는 행사.
+     * "지났다"의 기준은 오늘 00:00 이므로, 오늘 날짜에 걸친 행사는 시각과 무관하게 상단에 남는다.
+     */
+    private fun sortByDeadline(events: List<Event>): List<Event> {
+        val cutoff = LocalDate.now().atStartOfDay()
+
+        val upcoming = mutableListOf<Pair<Event, LocalDateTime>>()
+        val past = mutableListOf<Pair<Event, LocalDateTime>>()
+        val undated = mutableListOf<Event>()
+
+        for (e in events) {
+            val key = searchSortKey(e)
+            when {
+                key == null -> undated += e
+                key.isBefore(cutoff) -> past += e to key
+                else -> upcoming += e to key
+            }
+        }
+
+        // 동점이면 id 내림차순(최신 등록 우선)으로 tie-break
+        return upcoming.sortedWith(
+            compareBy<Pair<Event, LocalDateTime>> { it.second }.thenByDescending { it.first.id }
+        ).map { it.first } +
+            past.sortedWith(
+                compareByDescending<Pair<Event, LocalDateTime>> { it.second }.thenByDescending { it.first.id }
+            ).map { it.first } +
+            undated.sortedByDescending { it.id }
+    }
+
+    /** 정렬 키: applyEnd > eventStart > applyStart > eventEnd (앞이 null이면 다음 것) */
+    private fun searchSortKey(e: Event): LocalDateTime? =
+        e.applyEnd ?: e.eventStart ?: e.applyStart ?: e.eventEnd
 
     private fun loadInterestMap(userId: Long?): Map<Long, Int> {
         if (userId == null) return emptyMap()
