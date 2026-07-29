@@ -42,7 +42,7 @@ class AuthService(
     @Transactional
     fun socialLogin(req: SocialLoginRequest): SocialLoginResult {
         val socialProfile = when (req.provider.uppercase()) {
-            "GOOGLE" -> getGoogleProfile(req.code,req.accessToken, req.codeVerifier) // codeVerifier 추가된 버전 유지
+            "GOOGLE" -> getGoogleProfile(req.code,req.accessToken, req.codeVerifier, req.clientType) // codeVerifier 추가된 버전 유지
             "KAKAO" -> getKakaoProfile(req.code, req.accessToken)
             "NAVER" -> getNaverProfile(req.code, req.accessToken)
             else -> throw IllegalArgumentException("지원하지 않는 Provider입니다.")
@@ -73,7 +73,7 @@ class AuthService(
         )
     }
 
-    private fun getGoogleProfile(code: String?, providedAccessToken: String?, codeVerifier: String?): SocialUserProfile {
+    private fun getGoogleProfile(code: String?, providedAccessToken: String?, codeVerifier: String?, clientType: String?): SocialUserProfile {
         // 모바일(accessToken)이면 토큰 교환 생략, 웹(code)이면 토큰 발급
         val finalAccessToken = providedAccessToken ?: run {
             requireNotNull(code) { "웹 로그인 시 code는 필수입니다." }
@@ -85,8 +85,15 @@ class AuthService(
                 add("client_secret", googleClientSecret)
                 add("redirect_uri", googleRedirectUri)
                 add("grant_type", "authorization_code")
-                if (codeVerifier != null) {
-                    add("code_verifier", codeVerifier) // PKCE 핵심
+                if (clientType == "MOB") {
+                    // 안드로이드 SDK: redirect_uri는 빈 문자열, PKCE 생략
+                    add("redirect_uri", "")
+                } else {
+                    // 웹 브라우저: 설정된 redirect_uri와 PKCE 필수
+                    add("redirect_uri", googleRedirectUri)
+                    if (codeVerifier != null) {
+                        add("code_verifier", codeVerifier)
+                    }
                 }
             }
 
