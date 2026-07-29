@@ -78,6 +78,7 @@ class SecurityConfig(
                         "/api/v1/uploads/oci/**",
                         "/oauth2/authorization/**",
                         "/login/oauth2/code/**",
+                        "/error",
                     ).permitAll()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
