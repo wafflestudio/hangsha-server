@@ -26,7 +26,7 @@ class EliceEventParserClient(
     private val enabled: Boolean,
     @Value("\${elice.ml-api.event-parser.url:}")
     private val url: String,
-    @Value("\${elice.ml-api.event-parser.model:}")
+    @Value("\${elice.ml-api.event-parser.model:openai/gpt-5-nano}")
     private val model: String,
     @Value("\${elice.ml-api.event-parser.api-key:}")
     private val apiKey: String,
@@ -117,7 +117,7 @@ class EliceEventParserClient(
                     ),
                 ),
             ),
-            "max_completion_tokens" to 4096,
+            "max_completion_tokens" to 1024,
             "stream" to false,
             "response_format" to mapOf("type" to "json_object"),
         )
