@@ -32,6 +32,12 @@ class MemoTagIntegrationTest : IntegrationTestBase() {
                 .header("Authorization", bearer(token))
         )
 
+    private fun getMemoByEvent(token: String, eventId: Long) =
+        mockMvc.perform(
+            get("/api/v1/memos/by-event/$eventId")
+                .header("Authorization", bearer(token))
+        )
+
     // =========================================================
     // POST /api/v1/memos  메모 생성
     // =========================================================
@@ -194,6 +200,23 @@ class MemoTagIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `POST memos content가 빈 문자열이면 400이고 저장되지 않는다`() {
+        val (_, token) = dataGenerator.generateUserWithAccessToken()
+        val eventId = requireNotNull(dataGenerator.generateEvent(title = "EV").id)
+
+        mockMvc.perform(
+            post("/api/v1/memos")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(eventId, ""))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("MEMO_CONTENT_CANNOT_BE_BLANK"))
+
+        assertTrue(memoRepository.findAll().none())
+    }
+
+    @Test
     fun `POST memos 메모 생성 없는 이벤트면 404`() {
         val (_, token) = dataGenerator.generateUserWithAccessToken()
 
@@ -316,6 +339,50 @@ class MemoTagIntegrationTest : IntegrationTestBase() {
     fun `GET memos 토큰 없으면 401`() {
         mockMvc.perform(get("/api/v1/memos"))
             .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `GET memos by event 내 특정 이벤트 메모를 단일 응답으로 조회한다`() {
+        val (_, token) = dataGenerator.generateUserWithAccessToken()
+        val event = dataGenerator.generateEvent(title = "Target Event")
+        val eventId = requireNotNull(event.id)
+
+        val created = mockMvc.perform(
+            post("/api/v1/memos")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(eventId, "event memo", listOf("event-tag")))
+        )
+            .andExpect(status().isOk)
+            .andReturn()
+
+        val memoId = objectMapper.readTree(created.response.contentAsString)["id"].asLong()
+
+        getMemoByEvent(token, eventId)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id").value(memoId))
+            .andExpect(jsonPath("$.eventId").value(eventId))
+            .andExpect(jsonPath("$.eventTitle").value("Target Event"))
+            .andExpect(jsonPath("$.content").value("event memo"))
+            .andExpect(jsonPath("$.tags").isArray)
+    }
+
+    @Test
+    fun `GET memos by event 남의 메모거나 없으면 404`() {
+        val (_, tokenA) = dataGenerator.generateUserWithAccessToken()
+        val (_, tokenB) = dataGenerator.generateUserWithAccessToken()
+        val eventId = requireNotNull(dataGenerator.generateEvent(title = "EV").id)
+
+        mockMvc.perform(
+            post("/api/v1/memos")
+                .header("Authorization", bearer(tokenA))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(eventId, "mine"))
+        )
+            .andExpect(status().isOk)
+
+        getMemoByEvent(tokenB, eventId)
+            .andExpect(status().isNotFound)
     }
 
     @Test
@@ -472,7 +539,7 @@ class MemoTagIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `PATCH memos 메모 수정 content가 null이면 내용이 비워진다`() {
+    fun `PATCH memos 메모 수정 content가 null이면 400이고 DB는 변하지 않는다`() {
         val (_, token) = dataGenerator.generateUserWithAccessToken()
 
         val eventId = requireNotNull(dataGenerator.generateEvent(title = "EV").id)
@@ -494,11 +561,40 @@ class MemoTagIntegrationTest : IntegrationTestBase() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(patchBody)
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.content").value(""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("MEMO_CONTENT_CANNOT_BE_BLANK"))
 
         val saved = memoRepository.findById(memoId).orElseThrow()
-        assertEquals("", saved.content)
+        assertEquals("will-clear", saved.content)
+    }
+
+    @Test
+    fun `PATCH memos 메모 수정 content가 빈 문자열이면 400이고 DB는 변하지 않는다`() {
+        val (_, token) = dataGenerator.generateUserWithAccessToken()
+
+        val eventId = requireNotNull(dataGenerator.generateEvent(title = "EV").id)
+
+        val created = mockMvc.perform(
+            post("/api/v1/memos")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(eventId, "old", listOf("t1")))
+        ).andExpect(status().isOk).andReturn()
+
+        val memoId = objectMapper.readTree(created.response.contentAsString)["id"].asLong()
+
+        mockMvc.perform(
+            patch("/api/v1/memos/$memoId")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(mapOf("content" to "")))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("MEMO_CONTENT_CANNOT_BE_BLANK"))
+
+        val saved = memoRepository.findById(memoId).orElseThrow()
+        assertEquals("old", saved.content)
+        assertEquals(1, saved.tags.size)
     }
 
     @Test

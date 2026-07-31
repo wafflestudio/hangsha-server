@@ -57,6 +57,7 @@ class SecurityConfig(
                         "/api-docs/**",
                         "/api/v1/auth/**",
                         "/api/v1/auth/login/social",
+                        "/api/v1/mobile/auth/**",
                         "/openapi.yaml/**",
                         "/api/v1/health",
                         // 행사
@@ -69,11 +70,15 @@ class SecurityConfig(
                         // 주최 기관
                         "/api/v1/category-groups/**",
                         "/api/v1/categories/**",
+                        // 테스트 페이지 / 로컬 편의
+                        "/hangsha-search-test.html",
+                        "/api/v1/admin/auth/session",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
                         "/oauth2/authorization/**",
                         "/login/oauth2/code/**",
+                        "/error",
                     ).permitAll()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()

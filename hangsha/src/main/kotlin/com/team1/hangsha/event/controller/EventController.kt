@@ -2,8 +2,9 @@ package com.team1.hangsha.event.controller
 
 import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
 import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
-import com.team1.hangsha.event.dto.response.TitleSearchEventResponse
+import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
+import com.team1.hangsha.event.dto.response.EventCountResponse
 import com.team1.hangsha.event.service.EventService
 import com.team1.hangsha.user.LoggedInUser
 import com.team1.hangsha.user.model.User
@@ -31,6 +32,7 @@ class EventController(
         @RequestParam("statusId", required = false) statusIds: List<Long>?,
         @RequestParam("eventTypeId", required = false) eventTypeIds: List<Long>?,
         @RequestParam("orgId", required = false) orgIds: List<Long>?,
+        @RequestParam("applyExcludedKeywords", defaultValue = "true") applyExcludedKeywords: Boolean,
     ): MonthEventResponse =
         eventService.getMonthEvents(
             from = from,
@@ -39,6 +41,27 @@ class EventController(
             eventTypeIds = eventTypeIds,
             orgIds = orgIds,
             userId = user?.id,
+            applyExcludedKeywords = applyExcludedKeywords,
+        )
+
+    @GetMapping("/count")
+    fun count(
+        @Parameter(hidden = true) @LoggedInUser user: User?,
+        @RequestParam("from") @DateTimeFormat(iso = ISO.DATE) from: LocalDate,
+        @RequestParam("to") @DateTimeFormat(iso = ISO.DATE) to: LocalDate,
+        @RequestParam("statusId", required = false) statusIds: List<Long>?,
+        @RequestParam("eventTypeId", required = false) eventTypeIds: List<Long>?,
+        @RequestParam("orgId", required = false) orgIds: List<Long>?,
+        @RequestParam("applyExcludedKeywords", defaultValue = "true") applyExcludedKeywords: Boolean,
+    ): EventCountResponse =
+        eventService.countEvents(
+            from = from,
+            to = to,
+            statusIds = statusIds,
+            eventTypeIds = eventTypeIds,
+            orgIds = orgIds,
+            userId = user?.id,
+            applyExcludedKeywords = applyExcludedKeywords,
         )
 
     @GetMapping("/{eventId}")
@@ -57,6 +80,7 @@ class EventController(
         @RequestParam("statusId", required = false) statusIds: List<Long>?,
         @RequestParam("eventTypeId", required = false) eventTypeIds: List<Long>?,
         @RequestParam("orgId", required = false) orgIds: List<Long>?,
+        @RequestParam("applyExcludedKeywords", defaultValue = "true") applyExcludedKeywords: Boolean,
     ): DayEventResponse =
         eventService.getDayEvents(
             date = date,
@@ -66,16 +90,17 @@ class EventController(
             eventTypeIds = eventTypeIds,
             orgIds = orgIds,
             userId = user?.id,
+            applyExcludedKeywords = applyExcludedKeywords,
         )
 
-    @GetMapping("/search/title")
-    fun searchTitle(
+    @GetMapping("/search")
+    fun search(
         @Parameter(hidden = true) @LoggedInUser user: User?,
         @RequestParam("query") query: String,
         @RequestParam("page", defaultValue = "1") page: Int,
         @RequestParam("size", defaultValue = "20") size: Int,
-    ): TitleSearchEventResponse =
-        eventService.searchTitle(
+    ): SearchEventResponse =
+        eventService.search(
             query = query,
             page = page,
             size = size,

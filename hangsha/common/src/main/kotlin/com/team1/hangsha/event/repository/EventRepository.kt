@@ -31,19 +31,46 @@ interface EventRepository : CrudRepository<Event, Long> {
     @Query(
         """
     UPDATE events
-    SET status_id = :closedStatusId
+    SET status_id = :recruitingStatusId
     WHERE admin_deleted = false
-      AND status_id = :recruitingStatusId
-      AND apply_end IS NOT NULL
-      AND apply_end < :now
+      AND status_id = :statusId
+      AND apply_start IS NOT NULL
+      AND apply_start <= :now
       AND (
         admin_overridden_fields IS NULL
         OR JSON_CONTAINS(admin_overridden_fields, JSON_QUOTE('statusId')) = 0
       )
     """
     )
-    fun closeExpiredRecruitingEvents(
+    fun openStartedEventsByStatus(
+        @Param("statusId") statusId: Long,
         @Param("recruitingStatusId") recruitingStatusId: Long,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
+    @Modifying
+    @Query(
+        """
+    UPDATE events
+    SET status_id = :closedStatusId
+    WHERE admin_deleted = false
+      AND status_id = :statusId
+      AND (
+        (apply_end IS NOT NULL AND apply_end < :now)
+        OR (
+          apply_link LIKE 'https://www.snu.ac.kr/snunow/events%'
+          AND COALESCE(event_end, event_start) IS NOT NULL
+          AND COALESCE(event_end, event_start) < :now
+        )
+      )
+      AND (
+        admin_overridden_fields IS NULL
+        OR JSON_CONTAINS(admin_overridden_fields, JSON_QUOTE('statusId')) = 0
+      )
+    """
+    )
+    fun closeExpiredEventsByStatus(
+        @Param("statusId") statusId: Long,
         @Param("closedStatusId") closedStatusId: Long,
         @Param("now") now: LocalDateTime,
     ): Int

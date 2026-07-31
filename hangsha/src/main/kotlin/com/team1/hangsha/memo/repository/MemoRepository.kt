@@ -3,9 +3,12 @@ package com.team1.hangsha.memo.repository
 import com.team1.hangsha.memo.model.Memo
 import org.springframework.data.repository.CrudRepository
 import org.springframework.data.jdbc.repository.query.Query
+import java.util.Optional
 
 interface MemoRepository : CrudRepository<Memo, Long> {
     fun findAllByUserIdOrderByCreatedAtDesc(userId: Long): List<Memo>
+
+    fun findByUserIdAndEventId(userId: Long, eventId: Long): Optional<Memo>
 
     @Query(
         """

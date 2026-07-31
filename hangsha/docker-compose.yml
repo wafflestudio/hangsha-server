@@ -20,3 +20,28 @@ services:
     image: adminer
     ports:
       - "8081:8080"
+
+  manticore:
+    image: manticoresearch/manticore:latest
+    container_name: campus-manticore
+    ports:
+      - "19306:9306"   # MySQL protocol (SQL queries / debug)
+      - "19308:9308"   # HTTP JSON API
+    environment:
+      - EXTRA=1
+    volumes:
+      - ./manticore_data:/var/lib/manticore
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    restart: unless-stopped
+
+  kiwi:
+    build:
+      context: ../kiwi-service
+    container_name: campus-kiwi
+    ports:
+      - "8090:8090"
+    restart: unless-stopped

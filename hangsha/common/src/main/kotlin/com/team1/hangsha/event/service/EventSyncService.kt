@@ -17,6 +17,7 @@ import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.repository.EventRepository
+import com.team1.hangsha.search.outbox.EventSearchOutboxWriter
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -32,10 +33,14 @@ class EventSyncService(
     private val eventRepository: EventRepository,
     private val categoryGroupRepository: CategoryGroupRepository,
     private val categoryRepository: CategoryRepository,
+    private val outboxWriter: EventSearchOutboxWriter,
 ) {
 
     data class SyncResult(val total: Int, val upserted: Int, val skipped: Int)
 
+    /**
+     * 한 TX에서 event에 대한 upsert와 outbox에 대한 이벤트 기록을 원자적으로 수행한다.
+     */
     @Transactional
     fun sync(events: List<CrawledProgramEvent>): SyncResult {
         val statusGroupId = requireGroupId("모집현황")
@@ -46,7 +51,7 @@ class EventSyncService(
         var skipped = 0
 
         for (e in events) {
-            val applyLink = "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=${e.dataSeq}"
+            val applyLink = resolveApplyLink(e)
 
             // If we want to skip re-sync of deleted events, uncomment this block
             //if (eventRepository.existsAdminDeletedByApplyLink(applyLink)) {
@@ -58,18 +63,18 @@ class EventSyncService(
             val orgId = orgName?.let { getOrCreateCategoryId(orgGroupId, it) }
             val typeName = normalizeProgramType(e)
 
-            val statusName = normalizeStatus(e.status)
-            val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
             val eventTypeId = typeName?.let { findCategoryId(typeGroupId, it) }
 
             val applyStart = e.applyStart?.let { dateStart(it) }
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
+            val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
 
             val sessions = if (e.isPeriodEvent == true) {
                 emptyList()
             } else {
                 patchSessionTimesFromMainContent(e.detailSessions, e.mainContentHtml)
             }
+            val crawledLocation = e.location?.trim()?.takeIf { it.isNotBlank() }
             val hasExistingForApplyLink = eventRepository.existsByApplyLink(applyLink)
 
             data class UnitSpec(
@@ -84,12 +89,12 @@ class EventSyncService(
                         UnitSpec(
                             eventStart = parseSessionStart(s),
                             eventEnd = parseSessionEnd(s),
-                            location = s.location?.trim()?.takeIf { it.isNotBlank() }
+                            location = crawledLocation
                         )
                     }
                 } else {
-                    val (eventStart, eventEnd, location) = deriveEventPeriodAndLocation(e, sessions)
-                    listOf(UnitSpec(eventStart, eventEnd, location?.trim()?.takeIf { it.isNotBlank() }))
+                    val (eventStart, eventEnd) = deriveEventPeriod(e, sessions)
+                    listOf(UnitSpec(eventStart, eventEnd, crawledLocation))
                 }
 
             for (spec in unitSpecs) {
@@ -130,6 +135,15 @@ class EventSyncService(
                     eventStart = eventStart,
                     eventEnd = eventEnd,
                 )
+                val statusName = normalizeStatus(
+                    raw = e.status,
+                    event = e,
+                    applyEnd = applyEnd,
+                    eventStart = eventStart,
+                    eventEnd = eventEnd,
+                    now = now,
+                )
+                val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
 
                 val crawledTagsJson = if (cleanedTags.isEmpty()) {
                     null
@@ -175,12 +189,34 @@ class EventSyncService(
                     existing = existing,
                 )
 
-                eventRepository.save(model)
+                val saved = eventRepository.save(model)
+                outboxWriter.upsert(requireNotNull(saved.id))
                 upserted++
             }
         }
 
         return SyncResult(total = events.size, upserted = upserted, skipped = skipped)
+    }
+
+    @Transactional
+    fun openStartedWaitingEvents(): Int {
+        val statusGroupId = requireGroupId("모집현황")
+        val waitingStatusId = findCategoryId(statusGroupId, "모집대기")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집대기"
+            )
+        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+            ?: throw DomainException(
+                ErrorCode.INTERNAL_ERROR,
+                "Category not found. group=모집현황, name=모집중"
+            )
+
+        return eventRepository.openStartedEventsByStatus(
+            statusId = waitingStatusId,
+            recruitingStatusId = recruitingStatusId,
+            now = LocalDateTime.now(ZoneId.of("Asia/Seoul")),
+        )
     }
 
     @Transactional
@@ -202,11 +238,22 @@ class EventSyncService(
 
         val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
 
-        return eventRepository.closeExpiredRecruitingEvents(
-            recruitingStatusId = recruitingStatusId,
+        val unknownStatusId = findCategoryId(statusGroupId, "상태 미제공")
+
+        val closedRecruiting = eventRepository.closeExpiredEventsByStatus(
+            statusId = recruitingStatusId,
             closedStatusId = closedStatusId,
             now = now,
         )
+        val closedUnknown = unknownStatusId?.let {
+            eventRepository.closeExpiredEventsByStatus(
+                statusId = it,
+                closedStatusId = closedStatusId,
+                now = now,
+            )
+        } ?: 0
+
+        return closedRecruiting + closedUnknown
     }
 
     private fun requireGroupId(name: String): Long {
@@ -223,22 +270,32 @@ class EventSyncService(
     private fun findCategoryId(groupId: Long, name: String): Long? =
         categoryRepository.findByGroupIdAndName(groupId, name)?.id
 
-    private fun deriveEventPeriodAndLocation(
+    private fun resolveApplyLink(e: CrawledProgramEvent): String {
+        e.applyLink?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val dataSeq = e.dataSeq?.trim().orEmpty()
+        return if (dataSeq.length == 6 && dataSeq.all { it.isDigit() }) {
+            "https://www.snu.ac.kr/snunow/events?md=v&bbsidx=$dataSeq"
+        } else {
+            "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=$dataSeq"
+        }
+    }
+
+    private fun deriveEventPeriod(
         e: CrawledProgramEvent,
         sessions: List<CrawledDetailSession>
-    ): Triple<LocalDateTime?, LocalDateTime?, String?> {
+    ): Pair<LocalDateTime?, LocalDateTime?> {
         if (sessions.isNotEmpty()) {
             val starts = sessions.mapNotNull { parseSessionStart(it) }
             val ends = sessions.mapNotNull { parseSessionEnd(it) }
             val start = starts.minOrNull()
             val end = ends.maxOrNull()
-            val location = sessions.firstNotNullOfOrNull { it.location?.trim()?.takeIf { s -> s.isNotBlank() } }
-            return Triple(start, end, location)
+            return start to end
         }
 
         val start = e.activityStart?.let { LocalDate.parse(it).atStartOfDay() }
         val end = e.activityEnd?.let { LocalDate.parse(it).atTime(23, 59, 59) }
-        return Triple(start, end, null)
+        return start to end
     }
 
     private fun parseSessionStart(s: CrawledDetailSession): LocalDateTime? {
@@ -282,12 +339,42 @@ class EventSyncService(
         }
     }
 
-    private fun normalizeStatus(raw: String?): String? {
+    private fun normalizeStatus(
+        raw: String?,
+        event: CrawledProgramEvent,
+        applyEnd: LocalDateTime?,
+        eventStart: LocalDateTime?,
+        eventEnd: LocalDateTime?,
+        now: LocalDateTime,
+    ): String? {
         val s = raw?.trim()
         if (s.isNullOrBlank()) return null
         return when (s) {
             "마감임박" -> "모집중"
+            "상태 미제공" -> inferUnknownStatus(event, applyEnd, eventStart, eventEnd, now)
             else -> s
+        }
+    }
+
+    private fun inferUnknownStatus(
+        event: CrawledProgramEvent,
+        applyEnd: LocalDateTime?,
+        eventStart: LocalDateTime?,
+        eventEnd: LocalDateTime?,
+        now: LocalDateTime,
+    ): String {
+        val hasOpenApplyPeriod = applyEnd != null && !applyEnd.isBefore(now)
+        val eventNotExpired = (eventEnd ?: eventStart)?.let { !it.isBefore(now) } ?: false
+        val hasApplyOrSupportText = sequenceOf(
+            event.title,
+            event.mainContentHtml,
+            event.tags.joinToString(" "),
+        ).any { it?.contains(Regex("""신청|지원""")) == true }
+
+        return if (hasOpenApplyPeriod || hasApplyOrSupportText || eventNotExpired) {
+            "모집중"
+        } else {
+            "모집마감"
         }
     }
 
@@ -298,7 +385,7 @@ class EventSyncService(
             addAll(e.tags)
         }
 
-        if (candidates.any { it.contains("openlnl", ignoreCase = true) }) {
+        if (candidates.any { it.contains("lnl", ignoreCase = true) }) {
             return "OpenLnL"
         }
 
@@ -484,6 +571,7 @@ class EventSyncService(
         )
 
         val saved = eventRepository.save(model)
+        outboxWriter.upsert(requireNotNull(saved.id))
 
         return mapOf(
             "ok" to true,
@@ -544,6 +632,7 @@ class EventSyncService(
         )
 
         val saved = eventRepository.save(updated)
+        outboxWriter.upsert(saved.id ?: eventId)
         return mapOf("ok" to true, "eventId" to (saved.id ?: eventId))
     }
 
@@ -555,6 +644,7 @@ class EventSyncService(
             throw DomainException(ErrorCode.EVENT_NOT_FOUND)
         }
 
+        outboxWriter.delete(eventId)
         return mapOf("ok" to true, "deletedEventId" to eventId)
     }
 

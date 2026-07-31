@@ -137,6 +137,23 @@ class TagIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isUnauthorized)
     }
 
+    @Test
+    fun `태그 생성 이름이 빈 문자열이면 400이고 저장되지 않는다`() {
+        val (user, token) = dataGenerator.generateUserWithAccessToken()
+        val userId = requireNotNull(user.id)
+
+        mockMvc.perform(
+            post("/api/v1/tags")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(""))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("TAG_NAME_CANNOT_BE_BLANK"))
+
+        assertTrue(tagRepository.findAllByUserId(userId).isEmpty())
+    }
+
     // =========================================================
     // 태그 수정
     // =========================================================
@@ -211,6 +228,27 @@ class TagIntegrationTest : IntegrationTestBase() {
                 .content(createBody("t2"))
         )
             .andExpect(status().isConflict)
+    }
+
+    @Test
+    fun `태그 수정 이름이 빈 문자열이면 400이고 DB는 변하지 않는다`() {
+        val (user, token) = dataGenerator.generateUserWithAccessToken()
+        val userId = requireNotNull(user.id)
+
+        val tag = dataGenerator.generateTag(userId = userId, name = "old")
+        val tagId = requireNotNull(tag.id)
+
+        mockMvc.perform(
+            patch("/api/v1/tags/$tagId")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody(""))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("TAG_NAME_CANNOT_BE_BLANK"))
+
+        val saved = tagRepository.findById(tagId).orElseThrow()
+        assertEquals("old", saved.name)
     }
 
     @Test

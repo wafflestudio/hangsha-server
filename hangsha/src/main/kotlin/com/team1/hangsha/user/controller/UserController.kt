@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
 import com.team1.hangsha.user.AuthCookieSupport
+import com.team1.hangsha.user.dto.UpdateTutorialStateRequest
 import org.springframework.http.HttpHeaders
 
 @RestController
@@ -123,6 +124,15 @@ class UserController(
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, cookieSupport.clearRefreshCookie().toString())
             .build()
+    }
+
+    @PutMapping("/tutorial-state")
+    fun updateTutorialState(
+        @Parameter(hidden = true) @LoggedInUser user: User,
+        @RequestBody req: UpdateTutorialStateRequest,
+    ): ResponseEntity<Void> {
+        userService.updateTutorialState(user.id!!, req.tutorialState)
+        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/profile-image", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])

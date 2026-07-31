@@ -26,6 +26,8 @@ class MemoService(
 
     @Transactional
     fun createMemo(userId: Long, req: CreateMemoRequest): MemoResponse {
+        validateMemoContent(req.content)
+
         val event = eventRepository.findById(req.eventId)
             .orElseThrow { DomainException(ErrorCode.EVENT_NOT_FOUND) }
 
@@ -68,13 +70,13 @@ class MemoService(
             throw DomainException(ErrorCode.INVALID_REQUEST, "Invalid request body")
         }
 
-        // -------- content 정책: 미포함=변경없음 / null=비우기 / 값=업데이트 --------
+        // -------- content 정책: 미포함=변경없음 / null 또는 blank=거부 / 값=업데이트 --------
         val nextContent: String =
             if (!hasContent) {
                 memo.content
             } else {
-                // null이면 비우기 의도
-                (req.content ?: "").trimEnd() // trim 정책이 필요 없으면 그냥 (req.content ?: "")
+                validateMemoContent(req.content)
+                req.content!!.trimEnd()
             }
 
         // -------- tagNames 정책: 미포함=변경없음 / null=비우기 / 값=replace-all --------
@@ -131,6 +133,18 @@ class MemoService(
     }
 
     @Transactional(readOnly = true)
+    fun getMyMemoByEventId(userId: Long, eventId: Long): MemoResponse {
+        val memo = memoRepository.findByUserIdAndEventId(userId, eventId)
+            .orElseThrow { DomainException(ErrorCode.MEMO_NOT_FOUND) }
+
+        val eventTitle = eventRepository.findById(memo.eventId)
+            .map { it.title }
+            .orElse("Unknown Event")
+
+        return mapToMemoResponse(memo, eventTitle)
+    }
+
+    @Transactional(readOnly = true)
     fun findMemosByTagId(userId: Long, tagId: Long): List<MemoResponse> {
         val tag = tagRepository.findById(tagId).orElseThrow { DomainException(ErrorCode.TAG_NOT_FOUND) }
         if (tag.userId != userId) throw DomainException(ErrorCode.TAG_NOT_FOUND)
@@ -161,12 +175,26 @@ class MemoService(
 
    private fun resolveTags(userId: Long, tagNames: List<String>): Set<MemoTagRef> {
         return tagNames.distinct().map { name ->
+            validateTagName(name)
+
             val tag = tagRepository.findByUserIdAndName(userId, name)
                 .orElseGet {
                     tagRepository.save(Tag(userId = userId, name = name))
                 }
             MemoTagRef(tagId = tag.id!!)
         }.toSet()
+    }
+
+    private fun validateMemoContent(content: String?) {
+        if (content.isNullOrBlank()) {
+            throw DomainException(ErrorCode.MEMO_CONTENT_CANNOT_BE_BLANK)
+        }
+    }
+
+    private fun validateTagName(name: String) {
+        if (name.isBlank()) {
+            throw DomainException(ErrorCode.TAG_NAME_CANNOT_BE_BLANK)
+        }
     }
 
     private fun mapToMemoResponse(memo: Memo, eventTitle: String): MemoResponse {

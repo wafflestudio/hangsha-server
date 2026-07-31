@@ -1,9 +1,14 @@
 package com.team1.hangsha.event.dto.core
 
+import com.fasterxml.jackson.annotation.JsonInclude
+
 // events.json을 그대로 받는 DTO
 
 data class CrawledProgramEvent(
     val dataSeq: String? = null,
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val sourceUrl: String? = null,
+    val applyLink: String? = null,
     val majorTypes: List<String> = emptyList(), // [org, eventType]
     val title: String? = null,
     val status: String? = null,
@@ -15,6 +20,7 @@ data class CrawledProgramEvent(
     val applyCount: Int? = null,
     val capacity: Int? = null,
     val imageUrl: String? = null,
+    val location: String? = null,
     val tags: List<String> = emptyList(),
     val mainContentHtml: String? = null,
     val isPeriodEvent: Boolean? = null,
