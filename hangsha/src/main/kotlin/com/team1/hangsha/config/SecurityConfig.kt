@@ -72,7 +72,7 @@ class SecurityConfig(
                         "/api/v1/categories/**",
                         // 테스트 페이지 / 로컬 편의
                         "/hangsha-search-test.html",
-                        "/api/v1/admin/search/reindex",
+                        "/api/v1/admin/auth/session",
                         // 파일 업로드
                         "/static/**",
                         "/api/v1/uploads/oci/**",
