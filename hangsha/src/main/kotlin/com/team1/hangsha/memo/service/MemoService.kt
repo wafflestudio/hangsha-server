@@ -4,10 +4,13 @@ import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.memo.dto.*
+import com.team1.hangsha.memo.dto.core.MemoOrganizationResponse
 import com.team1.hangsha.memo.dto.core.MemoResponse
 import com.team1.hangsha.memo.dto.core.MemoTagResponse
+import com.team1.hangsha.memo.dto.core.MemoWithEventResponse
 import com.team1.hangsha.memo.model.Memo
 import com.team1.hangsha.memo.model.MemoTagRef
+import com.team1.hangsha.memo.repository.MemoQueryRepository
 import com.team1.hangsha.memo.repository.MemoRepository
 import com.team1.hangsha.tag.model.Tag
 import com.team1.hangsha.tag.repository.TagRepository
@@ -19,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 @Service
 class MemoService(
     private val memoRepository: MemoRepository,
+    private val memoQueryRepository: MemoQueryRepository,
     private val tagRepository: TagRepository,
     private val eventRepository: EventRepository,
     private val objectMapper: ObjectMapper,
@@ -121,14 +125,30 @@ class MemoService(
     }
 
     @Transactional(readOnly = true)
-    fun getMyMemos(userId: Long): List<MemoResponse> {
-        val memos = memoRepository.findAllByUserIdOrderByCreatedAtDesc(userId)
+    fun getMyMemos(userId: Long): List<MemoWithEventResponse> {
+        val rows = memoQueryRepository.findMemosWithEventByUserId(userId)
+        if (rows.isEmpty()) return emptyList()
 
-        return memos.map { memo ->
-            val eventTitle = eventRepository.findById(memo.eventId)
-                .map { it.title }
-                .orElse("Unknown Event")
-            mapToMemoResponse(memo, eventTitle)
+        val tagsByMemoId = memoQueryRepository.findTagsByMemoIds(rows.map { it.id })
+            .groupBy({ it.memoId }, { MemoTagResponse(id = it.tagId, name = it.tagName) })
+
+        return rows.map { row ->
+            MemoWithEventResponse(
+                id = row.id,
+                eventId = row.eventId,
+                eventTitle = row.eventTitle ?: "Unknown Event",
+                content = row.content,
+                tags = tagsByMemoId[row.id].orEmpty(),
+                createdAt = row.createdAt,
+                updatedAt = row.updatedAt,
+                applyEnd = row.applyEnd,
+                organization = if (row.orgId != null && row.orgName != null) {
+                    MemoOrganizationResponse(id = row.orgId, name = row.orgName)
+                } else {
+                    null
+                },
+                isBookmarked = row.isBookmarked,
+            )
         }
     }
 
