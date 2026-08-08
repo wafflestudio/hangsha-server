@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -80,6 +81,8 @@ class SecurityConfig(
                         "/login/oauth2/code/**",
                         "/error",
                     ).permitAll()
+                    // 버그 리포트 등록 (비로그인 사용자도 제출 가능, 조회 계열은 계속 인증 필요)
+                    .requestMatchers(HttpMethod.POST, "/api/v1/bug-reports").permitAll()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }

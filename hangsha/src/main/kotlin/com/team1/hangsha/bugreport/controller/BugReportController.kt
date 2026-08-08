@@ -23,13 +23,13 @@ class BugReportController(
     @PostMapping
     @Operation(
         summary = "버그 리포트 등록",
-        description = "로그인 사용자의 버그 리포트를 저장하고, 알림 채널로 전송을 시도합니다. 알림 전송 실패여도 저장은 성공 처리됩니다."
+        description = "버그 리포트를 저장하고, 알림 채널로 전송을 시도합니다. 비로그인 사용자도 제출할 수 있으며, 이 경우 작성자는 익명으로 기록됩니다. 알림 전송 실패여도 저장은 성공 처리됩니다."
     )
     fun create(
-        @Parameter(hidden = true) @LoggedInUser user: User,
+        @Parameter(hidden = true) @LoggedInUser user: User?,
         @Valid @RequestBody req: CreateBugReportRequest,
     ): ResponseEntity<CreateBugReportResponse> {
-        val id = bugReportService.create(req, user.id)
+        val id = bugReportService.create(req, user?.id)
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(CreateBugReportResponse(id = id))
     }
