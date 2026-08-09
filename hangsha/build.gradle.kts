@@ -48,6 +48,7 @@ dependencies {
     // TODO: common의 dependency를 root api, batch에 공유하는 과정에서 문제 -> 나중에 해결하기.
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.15")
     implementation("org.mindrot:jbcrypt:0.4")

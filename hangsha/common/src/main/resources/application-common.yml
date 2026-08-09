@@ -14,6 +14,10 @@ spring:
     url: jdbc:mysql://localhost:3307/campus_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: user
     password: password
+  data:
+    redis:
+      host: localhost
+      port: 6380   # docker-compose가 valkey의 6379를 6380으로 매핑
 
 oci:
   auth:
@@ -45,6 +49,10 @@ spring:
     url:
     username:
     password:
+  data:
+    redis:
+      host: hangsha-valkey   # 같은 네임스페이스의 ClusterIP 서비스명
+      port: 6379
 
 oci:
   vault:
@@ -60,6 +68,10 @@ spring:
     url:
     username:
     password:
+  data:
+    redis:
+      host: hangsha-valkey   # 같은 네임스페이스의 ClusterIP 서비스명
+      port: 6379
 
 oci:
   vault:
