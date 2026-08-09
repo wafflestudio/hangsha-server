@@ -33,9 +33,20 @@ class MemoController(
     }
 
     @GetMapping
-    fun getMyMemos(@Parameter(hidden = true) @LoggedInUser user: User,): ResponseEntity<ListMemoResponse> {
+    @Operation(
+        summary = "List my memos",
+        description = """
+            내 메모 목록을 최신순으로 조회합니다.
+
+            각 메모에는 메모를 적은 행사 정보가 함께 내려갑니다.
+            - applyEnd: 지원 마감일 (D-Day 계산 기준). 행사가 없거나 마감일 미정이면 null
+            - organization: 주최기관 { id, name }. 주최기관 미분류면 null
+            - isBookmarked: 현재 사용자의 해당 행사 북마크 여부
+            """
+    )
+    fun getMyMemos(@Parameter(hidden = true) @LoggedInUser user: User,): ResponseEntity<ListMemoWithEventResponse> {
         val memos = memoService.getMyMemos(user.id!!)
-        return ResponseEntity.ok(ListMemoResponse(items = memos))
+        return ResponseEntity.ok(ListMemoWithEventResponse(items = memos))
     }
 
     @GetMapping("/by-event/{eventId}")
