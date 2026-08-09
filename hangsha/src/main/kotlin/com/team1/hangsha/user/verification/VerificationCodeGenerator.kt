@@ -14,7 +14,8 @@ class VerificationCodeGenerator {
         }
 
     companion object {
-        // 메일로 받은 코드를 사람이 보고 옮겨 적으므로 혼동되는 문자(O/0, I/1)는 제외한다.
-        private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        // 숫자만 쓴다. 대소문자 구분이 사라져 입력 실수가 줄고,
+        // 모바일에서 숫자 키패드를 띄울 수 있다(inputmode="numeric").
+        private const val ALPHABET = "0123456789"
     }
 }
