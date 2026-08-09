@@ -145,6 +145,8 @@ auth:
     secure: true
     # OAuth 콜백 302(cross-site 리다이렉트)에서 심기는 쿠키는 SameSite=Lax면 브라우저가 저장을 거부 : None + Secure로 설정 변경
     same-site: None
+email:
+  sender: oci   # dev는 실제 발송. 프론트가 메일함으로 인증번호를 확인할 수 있어야 해서다.
 ---
 # ==========================================
 # prod
