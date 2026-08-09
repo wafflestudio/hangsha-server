@@ -84,6 +84,16 @@ springdoc:
 upload:
   max-size-bytes: 10485760
 
+email:
+  # logging: 발송하지 않고 로그로만 남김(로컬/인증 대기용) / oci: 실제 발송
+  sender: logging
+  verification:
+    ttl: 30m                  # 화면 카운트다운(30:00)과 같은 값
+    resend-cooldown: 60s
+    max-attempts: 5
+    code-length: 6
+    signup-token-ttl: 30m
+
 search:
   reindex:
     enabled: true
