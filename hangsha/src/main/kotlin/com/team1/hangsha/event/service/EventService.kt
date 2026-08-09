@@ -212,6 +212,9 @@ class EventService(
         query: String,
         page: Int,
         size: Int,
+        statusIds: List<Long>?,
+        eventTypeIds: List<Long>?,
+        orgIds: List<Long>?,
         userId: Long?,
     ): SearchEventResponse {
         val q = query.trim()
@@ -219,16 +222,18 @@ class EventService(
 
         val result = manticoreSearchService.searchUnified(q)
 
-        /**
-         * TODO :
-         * 3. categrory filtering
-         */
-
         val safePage = max(1, page)
         val safeSize = max(1, size)
         val offset = (safePage - 1) * safeSize
 
-        val allEvents = sortByDeadline(eventQueryRepository.findVisibleByIds(result.eventIds))
+        val allEvents = sortByDeadline(
+            eventQueryRepository.findVisibleByIds(
+                ids = result.eventIds,
+                statusIds = statusIds,
+                eventTypeIds = eventTypeIds,
+                orgIds = orgIds,
+            )
+        )
 
         // main_content_html 태그 제거 텍스트 캐시: 제외 필터와 하이라이트에서 재사용 (이벤트당 최대 1회 파싱)
         val contentTextCache = HashMap<Long, String?>()

@@ -99,11 +99,17 @@ class EventController(
         @RequestParam("query") query: String,
         @RequestParam("page", defaultValue = "1") page: Int,
         @RequestParam("size", defaultValue = "20") size: Int,
+        @RequestParam("statusId", required = false) statusIds: List<Long>?,
+        @RequestParam("eventTypeId", required = false) eventTypeIds: List<Long>?,
+        @RequestParam("orgId", required = false) orgIds: List<Long>?,
     ): SearchEventResponse =
         eventService.search(
             query = query,
             page = page,
             size = size,
+            statusIds = statusIds,
+            eventTypeIds = eventTypeIds,
+            orgIds = orgIds,
             userId = user?.id,
         )
 }
