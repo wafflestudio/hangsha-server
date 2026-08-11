@@ -94,7 +94,10 @@ class EventSyncService(
                     }
                 } else {
                     val (eventStart, eventEnd) = deriveEventPeriod(e, sessions)
-                    listOf(UnitSpec(eventStart, eventEnd, crawledLocation))
+                    val sessionLocation = sessions.singleOrNull()?.location
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    listOf(UnitSpec(eventStart, eventEnd, sessionLocation ?: crawledLocation))
                 }
 
             for (spec in unitSpecs) {
@@ -611,6 +614,15 @@ class EventSyncService(
         val newTitle = req.title?.trim()?.takeIf { it.isNotBlank() } ?: existing.title
         val newEventStart = req.eventStart ?: existing.eventStart
         val newEventEnd = req.eventEnd ?: existing.eventEnd
+        val isPeriodEvent = when {
+            req.isPeriodEvent != null -> req.isPeriodEvent
+            "isPeriodEvent" in newOverrideFields -> existing.isPeriodEvent
+            else -> EventPeriodPolicy.isPeriodEvent(
+                title = newTitle,
+                eventStart = newEventStart,
+                eventEnd = newEventEnd,
+            )
+        }
 
         val updated = existing.copy(
             title = newTitle,
@@ -629,11 +641,7 @@ class EventSyncService(
             eventStart = newEventStart,
             eventEnd = newEventEnd,
 
-            isPeriodEvent = req.isPeriodEvent ?: EventPeriodPolicy.isPeriodEvent(
-                title = newTitle,
-                eventStart = newEventStart,
-                eventEnd = newEventEnd,
-            ),
+            isPeriodEvent = isPeriodEvent,
 
             adminOverriddenFields = encodeOverrideFields(newOverrideFields),
             adminDeleted = false,

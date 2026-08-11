@@ -128,7 +128,12 @@ class EliceEventParserClient(
         )
 
     private fun chatCompletionsUrl(): String {
-        return url.trim().trimEnd('/')
+        val configuredUrl = url.trim().trimEnd('/')
+        return when {
+            configuredUrl.endsWith("/chat/completions") -> configuredUrl
+            configuredUrl.endsWith("/v1") -> "$configuredUrl/chat/completions"
+            else -> "$configuredUrl/v1/chat/completions"
+        }
     }
 
     private fun parseResponseText(text: String): List<ParsedEvent> {
