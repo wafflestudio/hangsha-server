@@ -11,6 +11,7 @@ jobs:
       ocir_repository: hangsha-prod/hangsha-server
       dockerfile: Dockerfile
       gradle_task: :bootJar
+      gitops_overlay_path: argocd/hangsha-prod
     secrets:
       OCI_AUTH_TOKEN: ${{ secrets.OCI_AUTH_TOKEN }}
       DEPLOYER_APP_ID: ${{ secrets.DEPLOYER_APP_ID }}

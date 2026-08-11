@@ -14,6 +14,10 @@ on:
         required: true
         type: string
         description: "Gradle task to build the jar (e.g., :bootJar, :batch:bootJar)"
+      gitops_overlay_path:
+        required: true
+        type: string
+        description: "GitOps kustomize overlay path (e.g., argocd/hangsha-dev)"
       platform:
         required: false
         type: string
@@ -75,5 +79,5 @@ jobs:
         with:
           image: ${{ env.OCIR_REGISTRY }}/${{ env.OCIR_NAMESPACE }}/${{ env.OCIR_REPOSITORY }}
           tag: ${{ env.IMAGE_TAG }}
-          overlay-path: argocd/${{ inputs.ocir_repository }}
+          overlay-path: ${{ inputs.gitops_overlay_path }}
           private-key: ${{ secrets.DEPLOYER_APP_PRIVATE_KEY }}
