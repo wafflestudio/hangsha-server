@@ -89,7 +89,7 @@ class EventSyncService(
                         UnitSpec(
                             eventStart = parseSessionStart(s),
                             eventEnd = parseSessionEnd(s),
-                            location = crawledLocation
+                            location = s.location?.trim()?.takeIf { it.isNotBlank() } ?: crawledLocation
                         )
                     }
                 } else {
@@ -378,7 +378,7 @@ class EventSyncService(
         }
     }
 
-    private fun normalizeProgramType(e: CrawledProgramEvent): String? {
+    private fun normalizeProgramType(e: CrawledProgramEvent): String {
         val candidates = buildList {
             addAll(e.majorTypes)
             e.title?.let { add(it) }
@@ -390,7 +390,7 @@ class EventSyncService(
         }
 
         val s = e.majorTypes.getOrNull(1)?.trim()
-        if (s.isNullOrBlank()) return null
+        if (s.isNullOrBlank()) return "기타"
 
         return when (s) {
             "레크리에이션" -> "기타"
@@ -436,7 +436,6 @@ class EventSyncService(
         "createdAt",
         "adminOverriddenFields",
         "adminDeleted",
-        "isPeriodEvent",
     )
 
     private fun normalizeOverrideFields(fields: Iterable<String>): Set<String> {
@@ -509,11 +508,15 @@ class EventSyncService(
             createdAt = existing.createdAt,
             adminOverriddenFields = existing.adminOverriddenFields,
             adminDeleted = false,
-            isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
-                title = merged.title,
-                eventStart = merged.eventStart,
-                eventEnd = merged.eventEnd,
-            ),
+            isPeriodEvent = if ("isPeriodEvent" in overrides) {
+                existing.isPeriodEvent
+            } else {
+                EventPeriodPolicy.isPeriodEvent(
+                    title = merged.title,
+                    eventStart = merged.eventStart,
+                    eventEnd = merged.eventEnd,
+                )
+            },
         )
     }
 
@@ -535,47 +538,59 @@ class EventSyncService(
             if (cleaned.isEmpty()) null else objectMapper.writeValueAsString(cleaned)
         }
 
-        val isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
+        val derivedIsPeriodEvent = EventPeriodPolicy.isPeriodEvent(
             title = title,
             eventStart = req.eventStart,
             eventEnd = req.eventEnd,
         )
+        val organization = req.organization?.trim()?.takeIf { it.isNotBlank() }
+        val resolvedOrgId = req.orgId ?: organization?.let {
+            getOrCreateCategoryId(requireGroupId("주체기관"), it)
+        }
 
-        val model = Event(
-            title = title,
-            imageUrl = req.imageUrl?.trim(),
-            operationMode = req.operationMode?.trim(),
+        val units = if (req.sessions.isEmpty()) {
+            listOf(Triple(req.eventStart, req.eventEnd, req.location?.trim()))
+        } else {
+            req.sessions.map { session ->
+                Triple(
+                    session.start ?: req.eventStart,
+                    session.end ?: req.eventEnd,
+                    session.location?.trim()?.takeIf { it.isNotBlank() } ?: req.location?.trim(),
+                )
+            }
+        }
 
-            tags = cleanedTagsJson,
-            mainContentHtml = req.mainContentHtml,
-
-            statusId = req.statusId,
-            eventTypeId = req.eventTypeId,
-            orgId = req.orgId,
-
-            applyStart = req.applyStart,
-            applyEnd = req.applyEnd,
-            eventStart = req.eventStart,
-            eventEnd = req.eventEnd,
-
-            isPeriodEvent = isPeriodEvent,
-
-            capacity = req.capacity ?: 0,
-            applyCount = req.applyCount ?: 0,
-
-            organization = req.organization?.trim(),
-            location = req.location?.trim(),
-            applyLink = req.applyLink?.trim(),
-
-            createdAt = Instant.now(),
-        )
-
-        val saved = eventRepository.save(model)
-        outboxWriter.upsert(requireNotNull(saved.id))
+        val savedEvents = units.map { (eventStart, eventEnd, location) ->
+            eventRepository.save(
+                Event(
+                    title = title,
+                    imageUrl = req.imageUrl?.trim(),
+                    operationMode = req.operationMode?.trim(),
+                    tags = cleanedTagsJson,
+                    mainContentHtml = req.mainContentHtml,
+                    statusId = req.statusId,
+                    eventTypeId = req.eventTypeId,
+                    orgId = resolvedOrgId,
+                    applyStart = req.applyStart,
+                    applyEnd = req.applyEnd,
+                    eventStart = eventStart,
+                    eventEnd = eventEnd,
+                    isPeriodEvent = if (req.sessions.isNotEmpty()) false else req.isPeriodEvent ?: derivedIsPeriodEvent,
+                    capacity = req.capacity ?: 0,
+                    applyCount = req.applyCount ?: 0,
+                    organization = organization,
+                    location = location,
+                    applyLink = req.applyLink?.trim(),
+                    createdAt = Instant.now(),
+                )
+            )
+        }
+        savedEvents.forEach { saved -> outboxWriter.upsert(requireNotNull(saved.id)) }
 
         return mapOf(
             "ok" to true,
-            "eventId" to saved.id,
+            "eventId" to savedEvents.firstOrNull()?.id,
+            "eventIds" to savedEvents.mapNotNull { it.id },
         )
     }
 
@@ -614,7 +629,7 @@ class EventSyncService(
             eventStart = newEventStart,
             eventEnd = newEventEnd,
 
-            isPeriodEvent = EventPeriodPolicy.isPeriodEvent(
+            isPeriodEvent = req.isPeriodEvent ?: EventPeriodPolicy.isPeriodEvent(
                 title = newTitle,
                 eventStart = newEventStart,
                 eventEnd = newEventEnd,

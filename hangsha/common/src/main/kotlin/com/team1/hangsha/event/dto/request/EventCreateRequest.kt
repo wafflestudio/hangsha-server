@@ -18,6 +18,7 @@ data class EventCreateRequest(
     val applyEnd: LocalDateTime? = null,
     val eventStart: LocalDateTime? = null,
     val eventEnd: LocalDateTime? = null,
+    val isPeriodEvent: Boolean? = null,
 
     val capacity: Int? = null,
     val applyCount: Int? = null,
@@ -25,4 +26,11 @@ data class EventCreateRequest(
     val organization: String? = null,
     val location: String? = null,
     val applyLink: String? = null,
+    val sessions: List<EventSessionCreateRequest> = emptyList(),
+)
+
+data class EventSessionCreateRequest(
+    val start: LocalDateTime? = null,
+    val end: LocalDateTime? = null,
+    val location: String? = null,
 )

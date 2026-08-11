@@ -18,6 +18,7 @@ data class EventPatchRequest(
     val applyEnd: LocalDateTime? = null,
     val eventStart: LocalDateTime? = null,
     val eventEnd: LocalDateTime? = null,
+    val isPeriodEvent: Boolean? = null,
 
     val capacity: Int? = null,
     val applyCount: Int? = null,

@@ -41,4 +41,5 @@ out/
 
 db_data/
 **/db_data/
+**/manticore_data/
 hangsha/db_data/

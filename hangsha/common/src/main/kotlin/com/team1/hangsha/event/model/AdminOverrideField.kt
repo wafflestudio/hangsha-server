@@ -13,6 +13,7 @@ enum class AdminOverrideField {
     APPLY_END,
     EVENT_START,
     EVENT_END,
+    IS_PERIOD_EVENT,
     CAPACITY,
     APPLY_COUNT,
     ORGANIZATION,
