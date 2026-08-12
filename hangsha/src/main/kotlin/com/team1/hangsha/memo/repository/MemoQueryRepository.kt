@@ -15,6 +15,7 @@ data class MemoWithEventRow(
     val updatedAt: Instant?,
 
     val eventTitle: String?,
+    val categoryId: Long?,
     val applyEnd: LocalDateTime?,
     val orgId: Long?,
     val orgName: String?,
@@ -43,6 +44,7 @@ class MemoQueryRepository(
                    m.created_at     AS created_at,
                    m.updated_at     AS updated_at,
                    e.title          AS event_title,
+                   e.org_id         AS category_id,
                    e.apply_end      AS apply_end,
                    c.id             AS org_id,
                    c.name           AS org_name,
@@ -92,6 +94,7 @@ private fun ResultSet.toMemoWithEventRow(): MemoWithEventRow = MemoWithEventRow(
     updatedAt = getTimestamp("updated_at")?.toInstant(),
 
     eventTitle = getString("event_title"),
+    categoryId = getLongOrNull("category_id"),
     applyEnd = getTimestamp("apply_end")?.toLocalDateTime(),
     orgId = getLongOrNull("org_id"),
     orgName = getString("org_name"),

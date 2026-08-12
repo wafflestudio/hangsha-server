@@ -29,6 +29,8 @@ data class MemoWithEventResponse(
     val id: Long,
     val eventId: Long,
     val eventTitle: String,
+    /** 메모가 달린 행사의 주최기관 카테고리 ID (events.org_id). 미분류이면 null */
+    val categoryId: Long?,
     val content: String,
     val tags: List<MemoTagResponse>,
     val createdAt: Instant?,

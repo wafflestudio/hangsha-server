@@ -501,6 +501,89 @@ components:
           items:
             $ref: "#/components/schemas/MemoResponse"
 
+    MemoWithEventResponse:
+      type: object
+      required: [ id, eventId, eventTitle, categoryId, content, tags, isBookmarked ]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 70
+        eventId:
+          type: integer
+          format: int64
+          example: 160
+        eventTitle:
+          type: string
+          example: "EV1"
+        categoryId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 메모가 달린 행사의 주최기관 카테고리 ID(events.org_id). 미분류이면 null
+          example: 12
+        content:
+          type: string
+          example: "m1"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoTag"
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-02-04T06:56:14.227038Z"
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-02-04T06:56:14.248542Z"
+        applyEnd:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-02-11T23:59:00"
+        organization:
+          $ref: "#/components/schemas/MemoOrganization"
+          nullable: true
+        isBookmarked:
+          type: boolean
+          example: false
+
+    MemoTag:
+      type: object
+      required: [ id, name ]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: "shared"
+
+    MemoOrganization:
+      type: object
+      required: [ id, name ]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12
+        name:
+          type: string
+          example: "공과대학"
+
+    ListMemoWithEventResponse:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoWithEventResponse"
+
     # ---------------- Tags ----------------
     Tag:
       type: object
@@ -1325,7 +1408,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListMemoResponse"
+                $ref: "#/components/schemas/ListMemoWithEventResponse"
         "401":
           description: Unauthorized
 
