@@ -8,6 +8,8 @@ import com.team1.hangsha.event.dto.request.EventCreateRequest
 import com.team1.hangsha.event.dto.request.EventOverrideUpdateRequest
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
+import com.team1.hangsha.event.service.ManualEventDraftParser
+import com.team1.hangsha.event.service.ManualEventDraftResponse
 import com.team1.hangsha.search.ManticoreIndexService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -28,6 +30,7 @@ class EventSyncController(
     private val eventRepository: EventRepository,
     private val objectMapper: ObjectMapper,
     private val manticoreIndexService: ManticoreIndexService,
+    private val manualEventDraftParser: ManualEventDraftParser,
 ) {
     @PostMapping("/sync")
     fun sync(
@@ -105,6 +108,12 @@ class EventSyncController(
     fun createEvent(
         @RequestBody req: EventCreateRequest,
     ): Map<String, Any?> = eventSyncService.createEvent(req)
+
+    @PostMapping("/parse-draft", consumes = ["multipart/form-data"])
+    fun parseDraft(
+        @RequestParam(required = false) text: String?,
+        @RequestParam(required = false) image: MultipartFile?,
+    ): ManualEventDraftResponse = manualEventDraftParser.parse(text, image)
 
     @PatchMapping("/{eventId}")
     fun patchEvent(

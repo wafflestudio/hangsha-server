@@ -56,16 +56,16 @@ class CategoryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `GET categories orgs - 주체기관 그룹이 있으면 해당 그룹 카테고리만 sortOrder 오름차순으로 반환`() {
-        // DataGenerator의 generateOrgCategory는 "주체기관" 그룹을 새로 만들고, 그 아래 카테고리를 만든다.
-        val org1 = dataGenerator.generateOrgCategory(name = "org-b") // 기본 sortOrder 랜덤/순차라 테스트에서는 직접 보장하기 어려움
-        val org2 = dataGenerator.generateOrgCategory(name = "org-a")
-
-        dataGenerator.cleanupAll()
-
+    fun `GET categories orgs - 두 번 이상 사용된 주체기관만 sortOrder 오름차순으로 반환`() {
         val orgGroup = dataGenerator.generateCategoryGroup(name = "주체기관", sortOrder = 1)
-        val c2 = dataGenerator.generateCategory(group = orgGroup, name = "기관-2", sortOrder = 2)
         val c1 = dataGenerator.generateCategory(group = orgGroup, name = "기관-1", sortOrder = 1)
+        val c2 = dataGenerator.generateCategory(group = orgGroup, name = "기관-2", sortOrder = 2)
+        val c3 = dataGenerator.generateCategory(group = orgGroup, name = "기관-3", sortOrder = 3)
+        dataGenerator.generateEvent(orgId = c1.id)
+        dataGenerator.generateEvent(orgId = c1.id)
+        dataGenerator.generateEvent(orgId = c2.id)
+        dataGenerator.generateEvent(orgId = c2.id)
+        dataGenerator.generateEvent(orgId = c3.id)
 
         // 다른 그룹/카테고리 섞어도 응답엔 나오면 안 됨
         val otherGroup = dataGenerator.generateCategoryGroup(name = "기타", sortOrder = 2)
@@ -79,7 +79,7 @@ class CategoryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.items").isArray)
             .andExpect(jsonPath("$.items.length()").value(2))
 
-            // sortOrder 오름차순: 기관-1 -> 기관-2
+            // 두 번 사용된 기관만 sortOrder 순서로 반환
             .andExpect(jsonPath("$.items[0].id").value(c1.id!!))
             .andExpect(jsonPath("$.items[0].groupId").value(orgGroup.id!!))
             .andExpect(jsonPath("$.items[0].name").value("기관-1"))

@@ -50,7 +50,10 @@ class CategoryService(
         val groupId = orgGroup.id
             ?: throw DomainException(ErrorCode.INTERNAL_ERROR, "CategoryGroup.id is null (unexpected)")
 
-        return categoryRepository.findAllByGroupIdOrderBySortOrderAsc(groupId).map { c ->
+        return categoryRepository.findAllByGroupIdWithMinimumEventCount(
+            groupId = groupId,
+            minimumEventCount = 2,
+        ).map { c ->
             CategoryDto(
                 id = c.id ?: throw DomainException(ErrorCode.INTERNAL_ERROR, "Category.id is null (unexpected)"),
                 groupId = c.groupId,

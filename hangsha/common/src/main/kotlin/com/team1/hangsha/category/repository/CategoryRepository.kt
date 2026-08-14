@@ -18,6 +18,25 @@ interface CategoryRepository : CrudRepository<Category, Long> {
 
     fun findAllByGroupIdOrderBySortOrderAsc(groupId: Long): List<Category>
 
+    @Query(
+        """
+        SELECT c.*
+        FROM categories c
+        WHERE c.group_id = :groupId
+          AND (
+              SELECT COUNT(*)
+              FROM events e
+              WHERE e.org_id = c.id
+                AND e.admin_deleted = FALSE
+          ) >= :minimumEventCount
+        ORDER BY c.sort_order ASC
+        """
+    )
+    fun findAllByGroupIdWithMinimumEventCount(
+        @Param("groupId") groupId: Long,
+        @Param("minimumEventCount") minimumEventCount: Int,
+    ): List<Category>
+
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM categories WHERE group_id = :groupId")
     fun findMaxSortOrderByGroupId(@Param("groupId") groupId: Long): Int
 }

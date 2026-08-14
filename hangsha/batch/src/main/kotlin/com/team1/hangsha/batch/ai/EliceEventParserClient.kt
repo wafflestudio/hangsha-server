@@ -24,12 +24,16 @@ class EliceEventParserClient(
     private val objectMapper: ObjectMapper,
     @Value("\${elice.ml-api.event-parser.enabled:false}")
     private val enabled: Boolean,
-    @Value("\${elice.ml-api.event-parser.url:}")
+    @Value("\${elice.ml-api.event-parser.url:https://mlapi.run/286e9158-d32e-436d-a23d-36b43fc8e68a/v1/chat/completions}")
     private val url: String,
-    @Value("\${elice.ml-api.event-parser.model:openai/gpt-5-nano}")
+    @Value("\${elice.ml-api.event-parser.model:gpt-5.6-luna}")
     private val model: String,
     @Value("\${elice.ml-api.event-parser.api-key:}")
     private val apiKey: String,
+    @Value("\${elice.ml-api.event-parser.max-completion-tokens:4096}")
+    private val maxCompletionTokens: Int,
+    @Value("\${elice.ml-api.event-parser.reasoning-effort:low}")
+    private val reasoningEffort: String,
 ) {
     private var configurationWarningLogged = false
 
@@ -117,17 +121,18 @@ class EliceEventParserClient(
                     ),
                 ),
             ),
-            "max_completion_tokens" to 1024,
+            "max_completion_tokens" to maxCompletionTokens,
+            "reasoning_effort" to reasoningEffort,
             "stream" to false,
-            "response_format" to mapOf("type" to "json_object"),
+            "response_format" to RESPONSE_FORMAT,
         )
 
     private fun chatCompletionsUrl(): String {
-        val trimmed = url.trim().trimEnd('/')
-        return if (trimmed.endsWith("/v1/chat/completions")) {
-            trimmed
-        } else {
-            "$trimmed/v1/chat/completions"
+        val configuredUrl = url.trim().trimEnd('/')
+        return when {
+            configuredUrl.endsWith("/chat/completions") -> configuredUrl
+            configuredUrl.endsWith("/v1") -> "$configuredUrl/chat/completions"
+            else -> "$configuredUrl/v1/chat/completions"
         }
     }
 
@@ -194,38 +199,118 @@ class EliceEventParserClient(
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val SEOUL = ZoneId.of("Asia/Seoul")
+        private val NULLABLE_STRING_SCHEMA = mapOf("type" to listOf("string", "null"))
+        private val NULLABLE_CATEGORY_SCHEMA = mapOf(
+            "anyOf" to listOf(
+                mapOf(
+                    "type" to "string",
+                    "enum" to PROGRAM_TYPES.toList(),
+                ),
+                mapOf("type" to "null"),
+            ),
+        )
+        private val RESPONSE_FORMAT = mapOf(
+            "type" to "json_schema",
+            "json_schema" to mapOf(
+                "name" to "parsed_events",
+                "strict" to true,
+                "schema" to mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "items" to mapOf(
+                            "type" to "array",
+                            "items" to mapOf(
+                                "type" to "object",
+                                "properties" to mapOf(
+                                    "id" to mapOf("type" to "string"),
+                                    "organization" to NULLABLE_STRING_SCHEMA,
+                                    "category" to NULLABLE_CATEGORY_SCHEMA,
+                                    "location" to NULLABLE_STRING_SCHEMA,
+                                    "applyStart" to NULLABLE_STRING_SCHEMA,
+                                    "applyEnd" to NULLABLE_STRING_SCHEMA,
+                                    "eventStart" to NULLABLE_STRING_SCHEMA,
+                                    "eventEnd" to NULLABLE_STRING_SCHEMA,
+                                    "sessions" to mapOf(
+                                        "type" to "array",
+                                        "items" to mapOf(
+                                            "type" to "object",
+                                            "properties" to mapOf(
+                                                "start" to NULLABLE_STRING_SCHEMA,
+                                                "end" to NULLABLE_STRING_SCHEMA,
+                                                "location" to NULLABLE_STRING_SCHEMA,
+                                            ),
+                                            "required" to listOf("start", "end", "location"),
+                                            "additionalProperties" to false,
+                                        ),
+                                    ),
+                                ),
+                                "required" to listOf(
+                                    "id",
+                                    "organization",
+                                    "category",
+                                    "location",
+                                    "applyStart",
+                                    "applyEnd",
+                                    "eventStart",
+                                    "eventEnd",
+                                    "sessions",
+                                ),
+                                "additionalProperties" to false,
+                            ),
+                        ),
+                    ),
+                    "required" to listOf("items"),
+                    "additionalProperties" to false,
+                ),
+            ),
+        )
 
         private const val SYSTEM_PROMPT = """
-You are a semantic parser for Seoul National University event data.
-Return JSON only. Do not use markdown.
+당신은 서울대학교 행사 공지를 구조화된 데이터로 변환하는 의미 분석기입니다.
+마크다운이나 설명 없이 JSON만 반환하세요.
 
-For each input event, return exactly one item with this schema:
+입력 행사마다 정확히 하나의 결과를 만들고, 입력의 id를 그대로 유지하세요.
+반환값은 반드시 다음 구조의 루트 객체 하나여야 합니다.
 {
-  "id": "same id from input",
-  "organization": string or null,
-  "category": one of ["교육(특강/세미나)", "공모전/경진대회", "현장학습/인턴", "사회공헌(봉사)", "학습/진로상담", "OpenLnL", "기타"],
-  "location": string or null,
-  "applyStart": "yyyy-MM-ddTHH:mm:ss" or null,
-  "applyEnd": "yyyy-MM-ddTHH:mm:ss" or null,
-  "eventStart": "yyyy-MM-ddTHH:mm:ss" or null,
-  "eventEnd": "yyyy-MM-ddTHH:mm:ss" or null
+  "items": [{
+    "id": "입력과 동일한 id",
+    "organization": "문자열 또는 null",
+    "category": "교육(특강/세미나) | 공모전/경진대회 | 현장학습/인턴 | 사회공헌(봉사) | 학습/진로상담 | OpenLnL | 기타 중 하나",
+    "location": "문자열 또는 null",
+    "applyStart": "yyyy-MM-ddTHH:mm:ss 또는 null",
+    "applyEnd": "yyyy-MM-ddTHH:mm:ss 또는 null",
+    "eventStart": "yyyy-MM-ddTHH:mm:ss 또는 null",
+    "eventEnd": "yyyy-MM-ddTHH:mm:ss 또는 null",
+    "sessions": [{
+      "start": "yyyy-MM-ddTHH:mm:ss 또는 null",
+      "end": "yyyy-MM-ddTHH:mm:ss 또는 null",
+      "location": "문자열 또는 null"
+    }]
+  }]
 }
 
-Use currentDate's year when a date omits the year.
-If a date range crosses December to January, use the next year for January.
+날짜와 시간 규칙:
+1. 연도가 생략된 날짜에는 currentDate의 연도를 사용하세요.
+2. 12월에서 1월로 이어지는 기간이면 1월은 다음 연도로 해석하세요.
+3. 오전/오후가 범위의 앞쪽에만 있으면 뒤쪽 시간에도 같은 오전/오후를 적용하세요. 예: "오후 1시 30분~3시 30분"은 13:30~15:30입니다.
+4. 제목, 본문, 표기된 일자·시간을 함께 읽고 시작과 종료 시각을 모두 추출하세요.
+5. 신청·등록·접수·제출·모집 기간은 applyStart/applyEnd에, 행사·활동·수업·전시·공연·프로그램이 실제로 열리는 기간은 eventStart/eventEnd에 넣으세요.
+6. 본문에서 두 기간이 같다고 명시하지 않은 이상 신청 기간을 행사 기간으로 복사하지 마세요. 불명확한 값은 null로 반환하세요.
 
-Organization policy:
-1. Return only the event organizer or operator explicitly stated in the content.
-2. If multiple organizations are found, return only the single most confident one. Never join names with commas.
-3. If no organizer is explicitly stated, return null. Do not guess.
+세션 규칙:
+1. 실제 행사·강연·수업 등의 일시가 명확하면 sessions에 넣으세요. 단일 일정도 sessions 항목 하나로 반환하세요.
+2. 서로 다른 날짜 또는 회차의 독립적인 일정은 각각 별도 sessions 항목으로 반환하고, 하나의 연속 기간으로 합치지 마세요.
+3. sessions의 start/end에는 명시된 값만 넣고, 종료 시각이 없으면 end는 null로 반환하세요. 장소가 없으면 location은 null로 반환하세요.
+4. 실제 일정이 명확하지 않으면 sessions는 빈 배열로 반환하세요.
+5. sessions가 있으면 eventStart/eventEnd에는 각각 가장 이른 시작과 가장 늦은 종료를 넣으세요. 종료가 전혀 없으면 eventEnd는 null로 반환하세요.
 
-Choose the closest category by semantic intent rather than exact wording; use "기타" only when no category reasonably fits.
-Return location only for a concrete confirmed venue, room, building, or online location; return null when the venue is undecided, optional, or participant-selected.
+기관 규칙:
+1. 본문에 명시된 행사 주최 또는 운영 기관만 반환하세요.
+2. 여러 기관이 있으면 가장 확실한 하나만 반환하고 쉼표로 합치지 마세요.
+3. 명시된 기관이 없으면 추측하지 말고 null을 반환하세요.
 
-Period policy:
-Infer applyStart/applyEnd as the application, registration, submission, or recruitment period.
-Infer eventStart/eventEnd as when the event, activity, class, exhibition, performance, or program actually happens.
-Do not copy an apply period into eventStart/eventEnd unless the content clearly says they are the same. Return null for unclear periods.
+분류는 단어의 일치보다 행사의 의미와 목적을 기준으로 가장 가까운 값을 고르세요. 합리적으로 맞는 분류가 없을 때만 "기타"를 사용하세요.
+장소는 확정된 행사장, 건물, 호실 또는 온라인 주소만 반환하세요. 미정이거나 선택 사항이거나 참가자가 정하는 장소이면 null을 반환하세요.
 """
     }
 }
@@ -246,6 +331,13 @@ data class ParsedEvent(
     val applyEnd: String? = null,
     val eventStart: String? = null,
     val eventEnd: String? = null,
+    val sessions: List<ParsedEventSession> = emptyList(),
+)
+
+data class ParsedEventSession(
+    val start: String? = null,
+    val end: String? = null,
+    val location: String? = null,
 )
 
 private fun CrawledProgramEvent.toPromptEvent(): PromptEvent =
@@ -266,12 +358,19 @@ private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent 
     val parsedApplyEndDate = parsed.applyEnd.toLocalDateString()
     val parsedEventStartDateTime = parsed.eventStart.toLocalDateTimeOrNull()
     val parsedEventEndDateTime = parsed.eventEnd.toLocalDateTimeOrNull()
+    val parsedSessions = parsed.sessions.mapIndexedNotNull { index, session ->
+        buildDetailSession(
+            start = session.start.toLocalDateTimeOrNull(),
+            end = session.end.toLocalDateTimeOrNull(),
+            location = session.location.clean(),
+        )?.copy(round = index + 1)
+    }
     val hasParsedPeriod = listOf(
         parsedApplyStartDate,
         parsedApplyEndDate,
         parsedEventStartDateTime,
         parsedEventEndDateTime,
-    ).any { it != null }
+    ).any { it != null } || parsedSessions.isNotEmpty()
 
     val fallback = if (hasParsedPeriod) ContentPeriodFallback() else extractContentPeriodFallback(mainContentHtml)
     val fallbackApplyStartDate = fallback.applyStart?.toLocalDate()?.toString()
@@ -292,15 +391,22 @@ private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent 
     val eventEndDateTime = if (hasParsedPeriod) parsedEventEndDateTime else fallback.eventEnd
     val eventStartDate = if (hasParsedPeriod) {
         eventStartDateTime?.toLocalDate()?.toString()
+            ?: parsedSessions.mapNotNull { it.startDate }.minOrNull()
     } else {
         activityStart ?: eventStartDateTime?.toLocalDate()?.toString()
     }
     val eventEndDate = if (hasParsedPeriod) {
         eventEndDateTime?.toLocalDate()?.toString()
+            ?: parsedSessions.mapNotNull { it.endDate ?: it.startDate }.maxOrNull()
     } else {
         activityEnd ?: eventEndDateTime?.toLocalDate()?.toString()
     }
     val aiDetailSession = buildDetailSession(eventStartDateTime, eventEndDateTime, parsedLocation)
+    val mergedSessions = when {
+        parsedSessions.isNotEmpty() -> parsedSessions
+        aiDetailSession != null -> listOf(aiDetailSession)
+        else -> detailSessions
+    }
 
     return copy(
         majorTypes = mergedMajorTypes,
@@ -310,8 +416,8 @@ private fun CrawledProgramEvent.merge(parsed: ParsedEvent): CrawledProgramEvent 
         activityEnd = eventEndDate,
         location = parsedLocation,
         status = inferStatus(applyStartDate, applyEndDate, eventStartDate, eventEndDate) ?: status,
-        detailSessions = aiDetailSession?.let { listOf(it) } ?: detailSessions,
-        isPeriodEvent = if (aiDetailSession != null) false else isPeriodEvent,
+        detailSessions = mergedSessions,
+        isPeriodEvent = if (parsedSessions.isNotEmpty() || aiDetailSession != null) false else isPeriodEvent,
     )
 }
 
@@ -383,8 +489,6 @@ private fun String?.cleanOrganization(): String? {
         .replace(Regex("""(?i)\bSNU\b"""), "")
         .replace("서울대학교", "")
         .replace("서울대", "")
-        .replace(Regex("""^[\s·ㆍ./()_-]+"""), "")
-        .replace(Regex("""[\s·ㆍ./()_-]+$"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
         .takeIf { it.isNotBlank() }
