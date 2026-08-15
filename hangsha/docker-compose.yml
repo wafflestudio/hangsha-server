@@ -45,3 +45,11 @@ services:
     ports:
       - "8090:8090"
     restart: unless-stopped
+
+  valkey:
+    # 배포 환경(hangsha-valkey)과 동일한 이미지
+    image: valkey/valkey:9-alpine
+    container_name: campus-valkey
+    ports:
+      - "6380:6379"   # 로컬 6379는 다른 프로세스가 점유하는 경우가 있어 6380으로 매핑
+    restart: unless-stopped

@@ -84,6 +84,22 @@ springdoc:
 upload:
   max-size-bytes: 10485760
 
+email:
+  # logging: 발송하지 않고 로그로만 남김(로컬/인증 대기용) / oci: 실제 발송
+  sender: logging
+  oci:
+    # Approved Sender가 등록된 컴파트먼트. sender 안에 들어가며 빠지면 400이 난다.
+    compartment-id: ocid1.compartment.oc1..aaaaaaaaxzo4fga6br76o3e34rshtsl6alzripmgdh7f4lg4u4tzezosypaq
+    # 미리 등록된 Approved Sender여야 한다.
+    from-address: hangsha@wafflestudio.com
+    from-name: 행샤
+  verification:
+    ttl: 30m                  # 화면 카운트다운(30:00)과 같은 값
+    resend-cooldown: 60s
+    max-attempts: 5
+    code-length: 6
+    signup-token-ttl: 30m
+
 search:
   reindex:
     enabled: true
@@ -129,6 +145,8 @@ auth:
     secure: true
     # OAuth 콜백 302(cross-site 리다이렉트)에서 심기는 쿠키는 SameSite=Lax면 브라우저가 저장을 거부 : None + Secure로 설정 변경
     same-site: None
+email:
+  sender: oci   # dev는 실제 발송. 프론트가 메일함으로 인증번호를 확인할 수 있어야 해서다.
 ---
 # ==========================================
 # prod

@@ -44,11 +44,13 @@ dependencies {
     implementation(project(":common"))
     implementation("com.wafflestudio.spring:spring-boot-starter-waffle-oci-vault:1.1.0")
     implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.80.1")
+    implementation("com.oracle.oci.sdk:oci-java-sdk-emaildataplane:3.80.1")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // TODO: common의 dependency를 root api, batch에 공유하는 과정에서 문제 -> 나중에 해결하기.
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.15")
     implementation("org.mindrot:jbcrypt:0.4")
