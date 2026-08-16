@@ -137,7 +137,7 @@ class MemoService(
                 id = row.id,
                 eventId = row.eventId,
                 eventTitle = row.eventTitle ?: "Unknown Event",
-                categoryId = row.categoryId,
+                eventTypeId = row.eventTypeId,
                 content = row.content,
                 tags = tagsByMemoId[row.id].orEmpty(),
                 createdAt = row.createdAt,
