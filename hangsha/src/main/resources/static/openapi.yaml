@@ -503,7 +503,7 @@ components:
 
     MemoWithEventResponse:
       type: object
-      required: [ id, eventId, eventTitle, categoryId, content, tags, isBookmarked ]
+      required: [ id, eventId, eventTitle, eventTypeId, content, tags, isBookmarked ]
       properties:
         id:
           type: integer
@@ -516,11 +516,11 @@ components:
         eventTitle:
           type: string
           example: "EV1"
-        categoryId:
+        eventTypeId:
           type: integer
           format: int64
           nullable: true
-          description: 메모가 달린 행사의 주최기관 카테고리 ID(events.org_id). 미분류이면 null
+          description: 메모가 달린 행사의 유형 카테고리 ID(events.event_type_id). 미분류이면 null
           example: 12
         content:
           type: string
