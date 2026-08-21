@@ -94,7 +94,7 @@ email:
     from-address: hangsha@wafflestudio.com
     from-name: 행샤
   verification:
-    ttl: 30m                  # 화면 카운트다운(30:00)과 같은 값
+    ttl: 10m                  # 화면 카운트다운(10:00)과 같은 값
     resend-cooldown: 60s
     max-attempts: 5
     code-length: 6
