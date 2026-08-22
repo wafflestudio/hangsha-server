@@ -340,9 +340,9 @@ private fun StringBuilder.appendEventOrderBy(userId: Long?) {
 
     val matchedPriorityExpr = """
         LEAST(
-          COALESCE((SELECT MIN(u.priority) FROM user_interest_event_statuses u WHERE u.user_id = :userId AND u.event_status_id = e.status_id), 2147483647),
-          COALESCE((SELECT MIN(u.priority) FROM user_interest_event_types u WHERE u.user_id = :userId AND u.event_type_id = e.event_type_id), 2147483647),
-          COALESCE((SELECT MIN(u.priority) FROM user_interest_organizations u WHERE u.user_id = :userId AND u.organization_id = e.org_id), 2147483647)
+          COALESCE((SELECT MIN(u.priority) FROM user_interest_categories u WHERE u.user_id = :userId AND u.event_status_id = e.status_id), 2147483647),
+          COALESCE((SELECT MIN(u.priority) FROM user_interest_categories u WHERE u.user_id = :userId AND u.event_type_id = e.event_type_id), 2147483647),
+          COALESCE((SELECT MIN(u.priority) FROM user_interest_categories u WHERE u.user_id = :userId AND u.organization_id = e.org_id), 2147483647)
         )
     """.trimIndent()
 

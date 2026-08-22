@@ -44,63 +44,49 @@ FROM categories c
 JOIN category_groups cg ON cg.id = c.group_id
 WHERE cg.name = '주체기관';
 
--- Each domain gets its own interest relation, so every column has a real FK.
-CREATE TABLE user_interest_event_statuses (
+-- Keep one interest list and enforce that each row references exactly one domain.
+RENAME TABLE user_interest_categories TO legacy_user_interest_categories;
+
+CREATE TABLE user_interest_categories (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
-    event_status_id BIGINT NOT NULL,
+    event_status_id BIGINT NULL,
+    event_type_id BIGINT NULL,
+    organization_id BIGINT NULL,
     priority INT NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uk_uies_user_status (user_id, event_status_id),
-    KEY idx_uies_user_priority (user_id, priority),
-    CONSTRAINT fk_uies_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_uies_status FOREIGN KEY (event_status_id) REFERENCES event_statuses(id) ON DELETE RESTRICT ON UPDATE CASCADE
+    UNIQUE KEY uk_uic_user_event_status (user_id, event_status_id),
+    UNIQUE KEY uk_uic_user_event_type (user_id, event_type_id),
+    UNIQUE KEY uk_uic_user_organization (user_id, organization_id),
+    UNIQUE KEY uk_uic_user_priority (user_id, priority),
+    KEY idx_uic_user_priority (user_id, priority),
+    CONSTRAINT chk_uic_exactly_one_domain CHECK (
+        (event_status_id IS NOT NULL) + (event_type_id IS NOT NULL) + (organization_id IS NOT NULL) = 1
+    ),
+    CONSTRAINT fk_uic_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_uic_event_status FOREIGN KEY (event_status_id) REFERENCES event_statuses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_uic_event_type FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_uic_organization FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE user_interest_event_types (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    user_id BIGINT NOT NULL,
-    event_type_id BIGINT NOT NULL,
-    priority INT NOT NULL,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_uiet_user_type (user_id, event_type_id),
-    KEY idx_uiet_user_priority (user_id, priority),
-    CONSTRAINT fk_uiet_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_uiet_type FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE user_interest_organizations (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    user_id BIGINT NOT NULL,
-    organization_id BIGINT NOT NULL,
-    priority INT NOT NULL,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_uio_user_organization (user_id, organization_id),
-    KEY idx_uio_user_priority (user_id, priority),
-    CONSTRAINT fk_uio_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_uio_organization FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT INTO user_interest_event_statuses (user_id, event_status_id, priority, created_at)
+INSERT INTO user_interest_categories (user_id, event_status_id, priority, created_at)
 SELECT uic.user_id, es.id, uic.priority, uic.created_at
-FROM user_interest_categories uic
+FROM legacy_user_interest_categories uic
 JOIN categories c ON c.id = uic.category_id
 JOIN category_groups cg ON cg.id = c.group_id AND cg.name = '모집현황'
 JOIN event_statuses es ON es.name = c.name;
 
-INSERT INTO user_interest_event_types (user_id, event_type_id, priority, created_at)
+INSERT INTO user_interest_categories (user_id, event_type_id, priority, created_at)
 SELECT uic.user_id, et.id, uic.priority, uic.created_at
-FROM user_interest_categories uic
+FROM legacy_user_interest_categories uic
 JOIN categories c ON c.id = uic.category_id
 JOIN category_groups cg ON cg.id = c.group_id AND cg.name = '프로그램 유형'
 JOIN event_types et ON et.name = c.name;
 
-INSERT INTO user_interest_organizations (user_id, organization_id, priority, created_at)
+INSERT INTO user_interest_categories (user_id, organization_id, priority, created_at)
 SELECT uic.user_id, o.id, uic.priority, uic.created_at
-FROM user_interest_categories uic
+FROM legacy_user_interest_categories uic
 JOIN categories c ON c.id = uic.category_id
 JOIN category_groups cg ON cg.id = c.group_id AND cg.name = '주체기관'
 JOIN organizations o ON o.name = c.name;
