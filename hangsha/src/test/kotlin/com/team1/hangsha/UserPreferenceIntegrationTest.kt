@@ -1,453 +1,78 @@
 package com.team1.hangsha
 
 import com.team1.hangsha.helper.IntegrationTestBase
-import com.team1.hangsha.user.repository.UserExcludedKeywordRepository
-import com.team1.hangsha.user.repository.UserInterestCategoryRepository
+import com.team1.hangsha.user.model.InterestCategoryType
+import com.team1.hangsha.user.repository.UserInterestDomainRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
-import org.springframework.beans.factory.annotation.Autowired
-import com.fasterxml.jackson.core.type.TypeReference
 
 class UserPreferenceIntegrationTest : IntegrationTestBase() {
+    @Autowired lateinit var userInterestDomainRepository: UserInterestDomainRepository
 
-    @Autowired lateinit var userInterestCategoryRepository: UserInterestCategoryRepository
-    @Autowired lateinit var userExcludedKeywordRepository: UserExcludedKeywordRepository
-
-    private fun replaceAllBody(vararg pairs: Pair<Long, Int>): String {
-        val body = mapOf(
-            "items" to pairs.map { (categoryId, priority) ->
-                mapOf("categoryId" to categoryId, "priority" to priority)
-            }
-        )
-        return toJson(body)
-    }
-
-    data class ListExcludedKeywordResponse(
-        val items: List<Item>
-    ) {
-        data class Item(
-            val id: Long,
-            val keyword: String,
-            val createdAt: String,
-        )
-    }
-
-    private fun list(token: String): ListExcludedKeywordResponse {
-        val res = mockMvc.perform(
-            get("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-            .andReturn()
-
-        return objectMapper.readValue(
-            res.response.contentAsString,
-            object : TypeReference<ListExcludedKeywordResponse>() {}
-        )
-    }
-
-    // -----------------------------
-    // Interest Categories
-    // -----------------------------
+    private fun replaceAllBody(vararg items: Triple<InterestCategoryType, Long, Int>) = toJson(
+        mapOf("items" to items.map { (type, id, priority) ->
+            mapOf("categoryType" to type.name, "categoryId" to id, "priority" to priority)
+        }),
+    )
 
     @Test
-    fun `PUT interest categories 전체 교체하면 DB도 교체되고 GET은 priority 순으로 내려준다`() {
+    fun `interest categories는 하나의 전역 우선순위 목록으로 교체된다`() {
         val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val userId = requireNotNull(user.id)
+        val first = dataGenerator.generateOrgCategory("기관-1")
+        val second = dataGenerator.generateOrgCategory("기관-2")
 
-        val group = dataGenerator.generateCategoryGroup(name = "group", sortOrder = 1)
-        val c1 = dataGenerator.generateCategory(group = group, name = "c1", sortOrder = 1)
-        val c2 = dataGenerator.generateCategory(group = group, name = "c2", sortOrder = 2)
-        val c3 = dataGenerator.generateCategory(group = group, name = "c3", sortOrder = 3)
-        val c4 = dataGenerator.generateCategory(group = group, name = "c4", sortOrder = 4)
-
-        val id1 = c1.id!!
-        val id2 = c2.id!!
-        val id3 = c3.id!!
-        val id4 = c4.id!!
-
-        // PUT: 전체 교체
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    replaceAllBody(
-                        id3 to 1,
-                        id1 to 2,
-                        id4 to 3,
-                        id2 to 4,
-                    )
-                )
-        )
+        mockMvc.perform(put("/api/v1/users/me/interest-categories")
+            .header("Authorization", bearer(token)).contentType(MediaType.APPLICATION_JSON)
+            .content(replaceAllBody(
+                Triple(InterestCategoryType.ORGANIZATION, second.id!!, 1),
+                Triple(InterestCategoryType.ORGANIZATION, first.id!!, 2),
+            )))
             .andExpect(status().isNoContent)
 
-        val dbRows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-        assertEquals(4, dbRows.size)
-        assertEquals(listOf(1, 2, 3, 4), dbRows.map { it.priority })
-        assertEquals(listOf(id3, id1, id4, id2), dbRows.map { it.categoryId })
+        val rows = userInterestDomainRepository.findAllByUserId(user.id!!)
+        assertEquals(listOf(1, 2), rows.map { it.priority })
+        assertEquals(listOf(second.id, first.id), rows.map { it.categoryId })
 
-        // GET: priority 정렬/DTO 포함 확인
-        val getResult = mockMvc.perform(
-            get("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-        )
+        mockMvc.perform(get("/api/v1/users/me/interest-categories").header("Authorization", bearer(token)))
             .andExpect(status().isOk)
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-            .andExpect(jsonPath("$.items").isArray)
-            .andExpect(jsonPath("$.items.length()").value(4))
-            .andExpect(jsonPath("$.items[0].priority").value(1))
-            .andExpect(jsonPath("$.items[1].priority").value(2))
-            .andExpect(jsonPath("$.items[2].priority").value(3))
-            .andExpect(jsonPath("$.items[3].priority").value(4))
-            .andExpect(jsonPath("$.items[0].category.id").isNumber)
-            .andExpect(jsonPath("$.items[0].category.groupId").isNumber)
-            .andExpect(jsonPath("$.items[0].category.name").isString)
-            .andExpect(jsonPath("$.items[0].category.sortOrder").isNumber)
-            .andReturn()
-
-        val root = objectMapper.readTree(getResult.response.contentAsString)
-        val priorities = root["items"].map { it["priority"].asInt() }
-        assertEquals(listOf(1, 2, 3, 4), priorities)
-
-        val firstCategoryId = root["items"][0]["category"]["id"].asLong()
-        assertEquals(id3, firstCategoryId)
+            .andExpect(jsonPath("$.items[0].categoryType").value("ORGANIZATION"))
+            .andExpect(jsonPath("$.items[0].categoryId").value(second.id!!))
     }
 
     @Test
-    fun `DELETE interest categories 한 개 삭제하면 DB에서도 삭제되고 GET 결과에서도 사라진다`() {
+    fun `같은 도메인과 id를 중복 등록하면 거부한다`() {
+        val (_, token) = dataGenerator.generateUserWithAccessToken()
+        val org = dataGenerator.generateOrgCategory()
+        mockMvc.perform(put("/api/v1/users/me/interest-categories")
+            .header("Authorization", bearer(token)).contentType(MediaType.APPLICATION_JSON)
+            .content(replaceAllBody(
+                Triple(InterestCategoryType.ORGANIZATION, org.id!!, 1),
+                Triple(InterestCategoryType.ORGANIZATION, org.id!!, 2),
+            )))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `interest category 삭제에는 도메인 타입이 필요하다`() {
         val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val userId = requireNotNull(user.id)
+        val org = dataGenerator.generateOrgCategory()
+        userInterestDomainRepository.add(user.id!!, InterestCategoryType.ORGANIZATION, org.id!!, 1)
 
-        val group = dataGenerator.generateCategoryGroup(name = "group", sortOrder = 1)
-        val c1 = dataGenerator.generateCategory(group = group, name = "c1", sortOrder = 1)
-        val c2 = dataGenerator.generateCategory(group = group, name = "c2", sortOrder = 2)
-
-        val id1 = c1.id!!
-        val id2 = c2.id!!
-
-        // 먼저 2개 저장
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(replaceAllBody(id1 to 1, id2 to 2))
-        )
+        mockMvc.perform(delete("/api/v1/users/me/interest-categories/${org.id}")
+            .queryParam("categoryType", "ORGANIZATION").header("Authorization", bearer(token)))
             .andExpect(status().isNoContent)
-
-        // DB 검증: 2개 존재
-        run {
-            val rows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-            assertEquals(2, rows.size)
-            assertEquals(setOf(id1, id2), rows.map { it.categoryId }.toSet())
-        }
-
-        // id1 삭제
-        mockMvc.perform(
-            delete("/api/v1/users/me/interest-categories/$id1")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isNoContent)
-
-        val afterRows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-        assertEquals(1, afterRows.size)
-        assertEquals(id2, afterRows.single().categoryId)
-
-        // GET 결과는 id2만 남아야 함
-        mockMvc.perform(
-            get("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.items.length()").value(1))
-            .andExpect(jsonPath("$.items[0].category.id").value(id2))
+        assertTrue(userInterestDomainRepository.findAllByUserId(user.id!!).isEmpty())
     }
 
     @Test
-    fun `PUT interest categories categoryId 중복이면 400이고 DB에 저장되지 않는다`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val userId = requireNotNull(user.id)
-
-        val group = dataGenerator.generateCategoryGroup(name = "group", sortOrder = 1)
-        val c1 = dataGenerator.generateCategory(group = group, name = "c1", sortOrder = 1)
-        val c2 = dataGenerator.generateCategory(group = group, name = "c2", sortOrder = 2)
-
-        val id1 = c1.id!!
-        val id2 = c2.id!!
-
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(replaceAllBody(id1 to 1, id1 to 2, id2 to 3))
-        )
-            .andExpect(status().isBadRequest)
-
-        val rows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-        assertTrue(rows.isEmpty())
-    }
-
-    @Test
-    fun `PUT interest categories priority가 연속이 아니면 400이고 DB에 저장되지 않는다`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val userId = requireNotNull(user.id)
-
-        val group = dataGenerator.generateCategoryGroup(name = "group", sortOrder = 1)
-        val c1 = dataGenerator.generateCategory(group = group, name = "c1", sortOrder = 1)
-        val c2 = dataGenerator.generateCategory(group = group, name = "c2", sortOrder = 2)
-
-        val id1 = c1.id!!
-        val id2 = c2.id!!
-
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(replaceAllBody(id1 to 1, id2 to 3))
-        )
-            .andExpect(status().isBadRequest)
-
-        val rows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-        assertTrue(rows.isEmpty())
-    }
-
-    @Test
-    fun `PUT interest categories 존재하지 않는 categoryId면 400이고 DB에 저장되지 않는다`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-        val userId = requireNotNull(user.id)
-
-        val nonExistingCategoryId = 9_999_999_999L
-
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(replaceAllBody(nonExistingCategoryId to 1))
-        )
-            .andExpect(status().isBadRequest)
-
-        val rows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-        assertTrue(rows.isEmpty())
-    }
-
-    @Test
-    fun `Interest Categories API는 토큰 없으면 401이고 DB 변화가 없다`() {
-        // GET
-        mockMvc.perform(get("/api/v1/users/me/interest-categories"))
-            .andExpect(status().isUnauthorized)
-
-        // PUT
-        mockMvc.perform(
-            put("/api/v1/users/me/interest-categories")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(toJson(mapOf("items" to emptyList<Any>())))
-        )
-            .andExpect(status().isUnauthorized)
-
-        // DELETE
-        mockMvc.perform(delete("/api/v1/users/me/interest-categories/1"))
-            .andExpect(status().isUnauthorized)
-    }
-
-    // -----------------------------
-    // Excluded Keywords
-    // -----------------------------
-
-    @Test
-    fun `GET excluded-keywords - 처음엔 빈 배열`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-
-        mockMvc.perform(
-            get("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.items").isArray)
-            .andExpect(jsonPath("$.items.length()").value(0))
-    }
-
-    @Test
-    fun `POST excluded-keywords - 성공하면 201, GET에 trim된 키워드가 보인다`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"   apple  "}""")
-        )
-            .andExpect(status().isCreated)
-
-        // DB에도 trim된 keyword로 저장됐는지 확인
-        assertEquals(1, userExcludedKeywordRepository.countByUserIdAndKeyword(requireNotNull(user.id), "apple"))
-
-        val body = list(token)
-        assertEquals(1, body.items.size)
-        assertEquals("apple", body.items[0].keyword)
-        assertTrue(body.items[0].id > 0)
-        assertTrue(body.items[0].createdAt.isNotBlank())
-    }
-
-    @Test
-    fun `POST excluded-keywords - 같은 키워드 중복 추가해도 멱등으로 1개만 유지`() {
-        val (user, token) = dataGenerator.generateUserWithAccessToken()
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"banana"}""")
-        )
-            .andExpect(status().isCreated)
-
-        // 같은 키워드 재요청 (서비스가 return 처리 → 컨트롤러는 201 유지)
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"banana"}""")
-        )
-            .andExpect(status().isCreated)
-
-        // DB에 1개만 있어야 함
-        assertEquals(1, userExcludedKeywordRepository.countByUserIdAndKeyword(requireNotNull(user.id), "banana"))
-
-        val body = list(token)
-        assertEquals(1, body.items.size)
-        assertEquals("banana", body.items[0].keyword)
-    }
-
-    @Test
-    fun `POST excluded-keywords - blank면 400`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-
-        // @NotBlank + 서비스 trim/blank 체크 둘 다 걸릴 수 있음
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"   "}""")
-        )
-            .andExpect(status().isBadRequest)
-    }
-
-    @Test
-    fun `GET excluded-keywords - created_at desc, id desc 정렬`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-
-        // 순서대로 넣었을 때, 리스트는 최신이 먼저 와야 함
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"k1"}""")
-        ).andExpect(status().isCreated)
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"k2"}""")
-        ).andExpect(status().isCreated)
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"k3"}""")
-        ).andExpect(status().isCreated)
-
-        val body = list(token)
-        assertEquals(listOf("k3", "k2", "k1"), body.items.map { it.keyword })
-    }
-
-    @Test
-    fun `DELETE excluded-keywords - 내 키워드 삭제되면 204, GET에서 제거됨`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-
-        // 추가
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"to-delete"}""")
-        )
-            .andExpect(status().isCreated)
-
-        val before = list(token)
-        assertEquals(1, before.items.size)
-        val id = before.items[0].id
-
-        // 삭제
-        mockMvc.perform(
-            delete("/api/v1/users/me/excluded-keywords/$id")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isNoContent)
-
-        val after = list(token)
-        assertEquals(0, after.items.size)
-    }
-
-    @Test
-    fun `DELETE excluded-keywords - 남의 id로 삭제 시도하면 400`() {
-        val (_, tokenA) = dataGenerator.generateUserWithAccessToken()
-        val (_, tokenB) = dataGenerator.generateUserWithAccessToken()
-
-        // A가 키워드 추가
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .header("Authorization", bearer(tokenA))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"secret"}""")
-        )
-            .andExpect(status().isCreated)
-
-        val aList = list(tokenA)
-        val aId = aList.items.single().id
-
-        // B가 A의 excludedKeywordId로 삭제 시도
-        mockMvc.perform(
-            delete("/api/v1/users/me/excluded-keywords/$aId")
-                .header("Authorization", bearer(tokenB))
-        )
-            .andExpect(status().isBadRequest)
-
-        // A의 목록은 그대로 남아야 함
-        val aAfter = list(tokenA)
-        assertEquals(1, aAfter.items.size)
-        assertEquals("secret", aAfter.items[0].keyword)
-    }
-
-    @Test
-    fun `DELETE excluded-keywords - 존재하지 않는 id 삭제 시 400`() {
-        val (_, token) = dataGenerator.generateUserWithAccessToken()
-
-        mockMvc.perform(
-            delete("/api/v1/users/me/excluded-keywords/999999999")
-                .header("Authorization", bearer(token))
-        )
-            .andExpect(status().isBadRequest)
-    }
-
-    @Test
-    fun `ExcludedKeyword API - 인증 없으면 401`() {
-        mockMvc.perform(get("/api/v1/users/me/excluded-keywords"))
-            .andExpect(status().isUnauthorized)
-
-        mockMvc.perform(
-            post("/api/v1/users/me/excluded-keywords")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"keyword":"x"}""")
-        )
-            .andExpect(status().isUnauthorized)
-
-        mockMvc.perform(delete("/api/v1/users/me/excluded-keywords/1"))
-            .andExpect(status().isUnauthorized)
+    fun `interest categories는 인증이 필요하다`() {
+        mockMvc.perform(get("/api/v1/users/me/interest-categories")).andExpect(status().isUnauthorized)
+        mockMvc.perform(put("/api/v1/users/me/interest-categories").contentType(MediaType.APPLICATION_JSON)
+            .content(toJson(mapOf("items" to emptyList<Any>())))).andExpect(status().isUnauthorized)
     }
 }

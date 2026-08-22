@@ -2,23 +2,27 @@ package com.team1.hangsha.user.service
 
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
-import com.team1.hangsha.category.dto.core.CategoryDto
-import com.team1.hangsha.category.repository.CategoryRepository
+import com.team1.hangsha.category.repository.EventTypeRepository
+import com.team1.hangsha.category.repository.OrganizationRepository
+import com.team1.hangsha.category.repository.EventStatusRepository
 import com.team1.hangsha.user.dto.Preference.ListExcludedKeywordResponse
 import com.team1.hangsha.user.dto.Preference.ListInterestCategoryResponse
 import com.team1.hangsha.user.dto.Preference.ReplaceAllInterestCategoriesRequest
 import com.team1.hangsha.user.model.UserExcludedKeyword
 import com.team1.hangsha.user.repository.UserExcludedKeywordRepository
-import com.team1.hangsha.user.repository.UserInterestCategoryRepository
+import com.team1.hangsha.user.repository.InterestCategoryRow
+import com.team1.hangsha.user.repository.UserInterestDomainRepository
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 class UserPreferenceService(
-    private val userInterestCategoryRepository: UserInterestCategoryRepository,
+    private val userInterestDomainRepository: UserInterestDomainRepository,
     private val userExcludedKeywordRepository: UserExcludedKeywordRepository,
-    private val categoryRepository: CategoryRepository,
+    private val eventStatusRepository: EventStatusRepository,
+    private val eventTypeRepository: EventTypeRepository,
+    private val organizationRepository: OrganizationRepository,
 ) {
 
     // ==============================
@@ -26,16 +30,14 @@ class UserPreferenceService(
     // ==============================
     @Transactional(readOnly = true)
     fun listInterestCategory(userId: Long): List<ListInterestCategoryResponse.Item> {
-        val rows = userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
+        val rows = userInterestDomainRepository.findAllByUserId(userId)
 
         return rows.map { row ->
             ListInterestCategoryResponse.Item(
-                category = CategoryDto(
-                    id = row.categoryId,
-                    groupId = row.groupId,
-                    name = row.name,
-                    sortOrder = row.sortOrder,
-                ),
+                categoryType = row.type,
+                categoryId = row.categoryId,
+                name = row.name,
+                sortOrder = row.sortOrder,
                 priority = row.priority
             )
         }
@@ -46,8 +48,8 @@ class UserPreferenceService(
         val items = req.items
 
         // 1) categoryId 중복 금지
-        val categoryIds = items.map { it.categoryId }
-        if (categoryIds.size != categoryIds.distinct().size) {
+        val categoryKeys = items.map { it.categoryType to it.categoryId }
+        if (categoryKeys.size != categoryKeys.distinct().size) {
             throw DomainException(ErrorCode.INVALID_REQUEST)
         }
 
@@ -68,31 +70,25 @@ class UserPreferenceService(
 
         // 4) category 존재 검증 (IN 한번)
         if (items.isNotEmpty()) {
-            val existCount = categoryRepository.countByIds(categoryIds)
-            if (existCount != categoryIds.size) {
+            val allExist = items.all { item -> when (item.categoryType) {
+                com.team1.hangsha.user.model.InterestCategoryType.EVENT_STATUS -> eventStatusRepository.existsById(item.categoryId)
+                com.team1.hangsha.user.model.InterestCategoryType.EVENT_TYPE -> eventTypeRepository.existsById(item.categoryId)
+                com.team1.hangsha.user.model.InterestCategoryType.ORGANIZATION -> organizationRepository.existsById(item.categoryId)
+            } }
+            if (!allExist) {
                 throw DomainException(ErrorCode.INVALID_REQUEST)
             }
         }
 
         // 5) 전체 교체 (트랜잭션)
-        userInterestCategoryRepository.deleteAllByUserId(userId)
-
-        if (items.isNotEmpty()) {
-            userInterestCategoryRepository.saveAll(
-                items.map {
-                    com.team1.hangsha.user.model.UserInterestCategory(
-                        userId = userId,
-                        categoryId = it.categoryId,
-                        priority = it.priority
-                    )
-                }
-            )
-        }
+        userInterestDomainRepository.replaceAll(userId, items.map {
+            InterestCategoryRow(it.categoryType, it.categoryId, "", 0, it.priority)
+        })
     }
 
     @Transactional
-    fun delete(userId: Long, categoryId: Long) {
-        val affected = userInterestCategoryRepository.deleteByUserIdAndCategoryId(userId, categoryId)
+    fun delete(userId: Long, categoryType: com.team1.hangsha.user.model.InterestCategoryType, categoryId: Long) {
+        val affected = userInterestDomainRepository.delete(userId, categoryType, categoryId)
         if (affected == 0) {
             throw DomainException(ErrorCode.INVALID_REQUEST)
         }

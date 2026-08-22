@@ -2,6 +2,7 @@ package com.team1.hangsha.helper
 
 import com.team1.hangsha.category.model.Category
 import com.team1.hangsha.category.model.CategoryGroup
+import com.team1.hangsha.category.model.Organization
 import com.team1.hangsha.common.enums.CourseSource
 import com.team1.hangsha.common.enums.DayOfWeek
 import com.team1.hangsha.common.enums.Semester
@@ -21,6 +22,7 @@ import com.team1.hangsha.user.model.UserIdentity
 import com.team1.hangsha.user.model.UserInterestCategory
 import com.team1.hangsha.category.repository.CategoryGroupRepository
 import com.team1.hangsha.category.repository.CategoryRepository
+import com.team1.hangsha.category.repository.OrganizationRepository
 import com.team1.hangsha.course.repository.CourseRepository
 import com.team1.hangsha.course.repository.CourseTimeSlotRepository
 import com.team1.hangsha.event.repository.EventRepository
@@ -30,6 +32,8 @@ import com.team1.hangsha.timetable.repository.EnrollRepository
 import com.team1.hangsha.timetable.repository.TimetableRepository
 import com.team1.hangsha.user.repository.UserIdentityRepository
 import com.team1.hangsha.user.repository.UserInterestCategoryRepository
+import com.team1.hangsha.user.repository.UserInterestDomainRepository
+import com.team1.hangsha.user.model.InterestCategoryType
 import com.team1.hangsha.user.repository.UserRepository
 import org.mindrot.jbcrypt.BCrypt
 import org.springframework.stereotype.Component
@@ -42,10 +46,12 @@ class DataGenerator(
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
     private val userInterestCategoryRepository: UserInterestCategoryRepository,
+    private val userInterestDomainRepository: UserInterestDomainRepository,
     private val jwtTokenProvider: JwtTokenProvider,
 
     private val categoryGroupRepository: CategoryGroupRepository,
     private val categoryRepository: CategoryRepository,
+    private val organizationRepository: OrganizationRepository,
 
     private val eventRepository: EventRepository,
 
@@ -176,9 +182,9 @@ class DataGenerator(
      * orgId 필터용 카테고리 필요할 때 사용.
      * repo에 findByName이 없을 수 있으니 "그냥 새 그룹을 만들어도 테스트는 충분"하게 설계.
      */
-    fun generateOrgCategory(name: String? = null): Category {
-        val orgGroup = generateCategoryGroup(name = "주체기관", sortOrder = 1)
-        return generateCategory(group = orgGroup, name = name)
+    fun generateOrgCategory(name: String? = null): Organization {
+        val n = next()
+        return organizationRepository.save(Organization(name = name ?: "organization-$n", sortOrder = n.toInt()))
     }
 
     // ----------------------------
@@ -197,6 +203,10 @@ class DataGenerator(
                 priority = priority,
             ),
         )
+    }
+
+    fun addUserInterestCategory(user: User, organization: Organization, priority: Int = 1) {
+        userInterestDomainRepository.add(user.id!!, InterestCategoryType.ORGANIZATION, organization.id!!, priority)
     }
 
     /**
