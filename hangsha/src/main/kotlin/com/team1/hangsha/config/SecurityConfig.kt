@@ -68,9 +68,10 @@ class SecurityConfig(
                         "/api/v1/events/day/**",
                         "/api/v1/events/search/**",
                         "/api/v1/events/**",
-                        // 주최 기관
-                        "/api/v1/category-groups/**",
-                        "/api/v1/categories/**",
+                        // 카테고리 조회
+                        "/api/v1/event-statuses/**",
+                        "/api/v1/event-types/**",
+                        "/api/v1/organizations/**",
                         // 테스트 페이지 / 로컬 편의
                         "/hangsha-search-test.html",
                         "/api/v1/admin/auth/session",

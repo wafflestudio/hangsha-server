@@ -34,7 +34,7 @@ class MemoQueryRepository(
 ) {
     /**
      * 유저의 메모를 행사 정보(마감일/주최기관/북마크 여부)와 함께 조회한다.
-     * events/categories/bookmarks는 LEFT JOIN이라 행사가 지워졌거나 주최기관 미분류여도 메모는 그대로 나온다.
+     * events/organizations/bookmarks는 LEFT JOIN이라 행사가 지워졌거나 주최기관 미분류여도 메모는 그대로 나온다.
      */
     fun findMemosWithEventByUserId(userId: Long): List<MemoWithEventRow> {
         val sql = """
@@ -51,7 +51,7 @@ class MemoQueryRepository(
                    (b.id IS NOT NULL) AS is_bookmarked
             FROM memos m
             LEFT JOIN events e ON e.id = m.event_id
-            LEFT JOIN categories c ON c.id = e.org_id
+            LEFT JOIN organizations c ON c.id = e.org_id
             LEFT JOIN bookmarks b ON b.event_id = m.event_id AND b.user_id = :userId
             WHERE m.user_id = :userId
             ORDER BY m.created_at DESC, m.id DESC

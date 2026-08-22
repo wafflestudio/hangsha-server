@@ -195,7 +195,7 @@ components:
         요청 바디는 username/profileImageUrl 중 하나 이상을 포함해야 함.
 
     # ---------------- Categories ----------------
-    CategoryGroupDto:
+    CategoryItemDto:
       type: object
       required: [id, name, sortOrder]
       properties:
@@ -203,39 +203,13 @@ components:
         name: { type: string }
         sortOrder: { type: integer, description: "UI에서 고정 순서로 보여주기 위한 정렬값" }
 
-    CategoryDto:
-      type: object
-      required: [id, groupId, name, sortOrder]
-      properties:
-        id: { type: integer, format: int64 }
-        groupId: { type: integer, format: int64 }
-        name: { type: string }
-        sortOrder: { type: integer, description: "UI에서 고정 순서로 보여주기 위한 정렬값" }
-
-    CategoryResponse:
-      type: object
-      required: [group, categories]
-      properties:
-        group: { $ref: '#/components/schemas/CategoryGroupDto' }
-        categories:
-          type: array
-          items: { $ref: '#/components/schemas/CategoryDto' }
-
-    ListCategoryGroupWithCategoriesResponse:
+    ListCategoryItemsResponse:
       type: object
       required: [ items ]
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/CategoryResponse' }
-
-    ListOrgCategoriesResponse:
-      type: object
-      required: [ items ]
-      properties:
-        items:
-          type: array
-          items: { $ref: '#/components/schemas/CategoryDto' }
+          items: { $ref: '#/components/schemas/CategoryItemDto' }
 
 
     # ---------------- Preference ----------------
@@ -269,8 +243,9 @@ components:
           description: "유저의 관심 카테고리 전체 목록을 이 배열로 교체합니다."
           items:
             type: object
-            required: [ categoryId, priority ]
+            required: [ categoryType, categoryId, priority ]
             properties:
+              categoryType: { type: string, enum: [EVENT_STATUS, EVENT_TYPE, ORGANIZATION] }
               categoryId: { type: integer, format: int64 }
               priority:
                 type: integer
@@ -296,9 +271,12 @@ components:
           type: array
           items:
             type: object
-            required: [category, priority]
+            required: [categoryType, categoryId, name, sortOrder, priority]
             properties:
-              category: { $ref: '#/components/schemas/CategoryDto' }
+              categoryType: { type: string, enum: [EVENT_STATUS, EVENT_TYPE, ORGANIZATION] }
+              categoryId: { type: integer, format: int64 }
+              name: { type: string }
+              sortOrder: { type: integer }
               priority:
                 type: integer
                 minimum: 1
@@ -1076,31 +1054,38 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ---------------- Categories ----------------
-  /category-groups/with-categories:
+  /event-statuses:
     get:
       tags: [Categories]
-      summary: 카테고리 그룹 + 카테고리 목록
+      summary: 모집 현황 목록 조회
       responses:
         "200":
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ListCategoryGroupWithCategoriesResponse' }
+              schema: { $ref: '#/components/schemas/ListCategoryItemsResponse' }
 
-  /categories/orgs:
+  /event-types:
     get:
       tags: [Categories]
-      summary: 주체기관 카테고리 목록 조회
-      description: |
-        필터 UI(주체기관 드롭다운)에서 사용할 주체기관 목록을 반환합니다.
-        - 내부적으로 "주체기관" category_group에 속한 categories를 조회합니다.
-        - 반환된 items[].id 값을 이벤트 조회 API의 orgId 필터로 그대로 사용합니다.
+      summary: 프로그램 유형 목록 조회
       responses:
         "200":
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ListOrgCategoriesResponse' }
+              schema: { $ref: '#/components/schemas/ListCategoryItemsResponse' }
+
+  /organizations:
+    get:
+      tags: [Categories]
+      summary: 주체기관 목록 조회
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListCategoryItemsResponse' }
 
   # ---------------- Preference ----------------
   /users/me/excluded-keywords:
@@ -1169,6 +1154,10 @@ paths:
           name: categoryId
           required: true
           schema: { type: integer, format: int64 }
+        - in: query
+          name: categoryType
+          required: true
+          schema: { type: string, enum: [EVENT_STATUS, EVENT_TYPE, ORGANIZATION] }
       responses:
         "204": { description: No Content }
 

@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestParam
+import com.team1.hangsha.user.model.InterestCategoryType
 
 
 @RestController
@@ -47,9 +49,10 @@ class UserPreferenceController (
     @DeleteMapping("/interest-categories/{categoryId}")
     fun deleteInterestCategory(
         @Parameter(hidden = true) @LoggedInUser user: User,
-        @PathVariable categoryId: Long
+        @PathVariable categoryId: Long,
+        @RequestParam categoryType: InterestCategoryType,
     ): ResponseEntity<Void> {
-        userPreferenceService.delete(user.id!!, categoryId)
+        userPreferenceService.delete(user.id!!, categoryType, categoryId)
         return ResponseEntity.noContent().build()
     }
 

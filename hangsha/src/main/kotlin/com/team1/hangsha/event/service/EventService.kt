@@ -17,7 +17,7 @@ import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.search.ManticoreSearchService
 import com.team1.hangsha.search.SearchHighlighter
 import com.team1.hangsha.user.repository.UserExcludedKeywordRepository
-import com.team1.hangsha.user.repository.UserInterestCategoryRepository
+import com.team1.hangsha.user.repository.UserInterestDomainRepository
 import org.jsoup.Jsoup
 import org.springframework.stereotype.Service
 import java.time.LocalDate
@@ -28,7 +28,7 @@ import kotlin.math.max
 class EventService(
     private val eventRepository: EventRepository,
     private val eventQueryRepository: EventQueryRepository,
-    private val userInterestCategoryRepository: UserInterestCategoryRepository,
+    private val userInterestDomainRepository: UserInterestDomainRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val manticoreSearchService: ManticoreSearchService,
     private val userExcludedKeywordRepository: UserExcludedKeywordRepository,
@@ -60,7 +60,7 @@ class EventService(
             applyExcludedKeywords = applyExcludedKeywords,
         )
 
-        val interestPriorityByCategoryId = loadInterestMap(userId)
+        val interestPriorities = loadInterestPriorities(userId)
 
         // 날짜별 버킷: 행사 기간 또는 신청 기간 중 하나라도 그 날과 겹치면 포함
         val buckets = linkedMapOf<LocalDate, MutableList<Event>>().apply {
@@ -111,13 +111,13 @@ class EventService(
             .toSortedMap()
             .mapValues { (_, dayEvents) ->
                 val sorted = dayEvents.sortedWith(
-                    compareBy<Event> { it.matchedInterestPriority(interestPriorityByCategoryId) ?: Int.MAX_VALUE }
+                    compareBy<Event> { it.matchedInterestPriority(interestPriorities) ?: Int.MAX_VALUE }
                         .thenBy { sortStart(it) }
                         .thenBy { it.id ?: Long.MAX_VALUE }
                 )
                 MonthEventResponse.DayBucket(
                     events = sorted.map { e ->
-                        val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
+                        val matchedPriority = e.matchedInterestPriority(interestPriorities)
                         val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
                         e.toDto(auth, matchedPriority, isBookmarked)
                     },
@@ -161,8 +161,8 @@ class EventService(
         val event = eventRepository.findVisibleById(eventId)
             ?: throw DomainException(ErrorCode.EVENT_NOT_FOUND)
 
-        val interestPriorityByCategoryId = loadInterestMap(userId)
-        val matchedPriority = event.matchedInterestPriority(interestPriorityByCategoryId)
+        val interestPriorities = loadInterestPriorities(userId)
+        val matchedPriority = event.matchedInterestPriority(interestPriorities)
         val isBookmarked: Boolean? = userId?.let { bookmarkRepository.exists(it, eventId) }
 
         return event.toDetailResponse(auth = userId != null, matchedPriority = matchedPriority, isBookmarked = isBookmarked)
@@ -185,7 +185,7 @@ class EventService(
             date, statusIds, eventTypeIds, orgIds, page, size, userId, applyExcludedKeywords
         )
 
-        val interestPriorityByCategoryId = loadInterestMap(userId)
+        val interestPriorities = loadInterestPriorities(userId)
         val auth = userId != null
         val bookmarkedIds: Set<Long> =
             if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
@@ -194,7 +194,7 @@ class EventService(
             ) else emptySet()
 
         val items = events.map { e ->
-            val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
+            val matchedPriority = e.matchedInterestPriority(interestPriorities)
             val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
             e.toDto(auth, matchedPriority, isBookmarked)
         }
@@ -260,14 +260,14 @@ class EventService(
         val events = filteredEvents.drop(offset).take(safeSize)
 
         val auth = userId != null
-        val interestPriorityByCategoryId = loadInterestMap(userId)
+        val interestPriorities = loadInterestPriorities(userId)
         val bookmarkedIds: Set<Long> =
             if (auth) bookmarkRepository.findBookmarkedEventIdsIn(
                 userId!!, events.mapNotNull { it.id }
             ) else emptySet()
 
         val items = events.map { e ->
-            val matchedPriority = e.matchedInterestPriority(interestPriorityByCategoryId)
+            val matchedPriority = e.matchedInterestPriority(interestPriorities)
             val isBookmarked = if (auth) bookmarkedIds.contains(requireNotNull(e.id)) else null
             val rawContent = contentTextOf(e)
 
@@ -329,18 +329,28 @@ class EventService(
     private fun searchSortKey(e: Event): LocalDateTime? =
         e.applyEnd ?: e.eventStart ?: e.applyStart ?: e.eventEnd
 
-    private fun loadInterestMap(userId: Long?): Map<Long, Int> {
-        if (userId == null) return emptyMap()
-        return userInterestCategoryRepository.findAllWithCategoryByUserId(userId)
-            .associate { it.categoryId to it.priority }
+    private fun loadInterestPriorities(userId: Long?): InterestPriorities {
+        if (userId == null) return InterestPriorities()
+        return userInterestDomainRepository.findAllByUserId(userId).fold(InterestPriorities()) { result, row ->
+            when (row.type) {
+                com.team1.hangsha.user.model.InterestCategoryType.EVENT_STATUS -> result.copy(status = result.status + (row.categoryId to row.priority))
+                com.team1.hangsha.user.model.InterestCategoryType.EVENT_TYPE -> result.copy(eventType = result.eventType + (row.categoryId to row.priority))
+                com.team1.hangsha.user.model.InterestCategoryType.ORGANIZATION -> result.copy(organization = result.organization + (row.categoryId to row.priority))
+            }
+        }
     }
 }
 
-private fun Event.matchedInterestPriority(priorityByCategoryId: Map<Long, Int>): Int? {
-    if (priorityByCategoryId.isEmpty()) return null
-    val p1 = statusId?.let { priorityByCategoryId[it] }
-    val p2 = eventTypeId?.let { priorityByCategoryId[it] }
-    val p3 = orgId?.let { priorityByCategoryId[it] }
+private data class InterestPriorities(
+    val status: Map<Long, Int> = emptyMap(),
+    val eventType: Map<Long, Int> = emptyMap(),
+    val organization: Map<Long, Int> = emptyMap(),
+)
+
+private fun Event.matchedInterestPriority(priorities: InterestPriorities): Int? {
+    val p1 = statusId?.let { priorities.status[it] }
+    val p2 = eventTypeId?.let { priorities.eventType[it] }
+    val p3 = orgId?.let { priorities.organization[it] }
     return listOfNotNull(p1, p2, p3).minOrNull()
 }
 

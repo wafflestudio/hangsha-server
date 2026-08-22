@@ -1,6 +1,6 @@
 package com.team1.hangsha.user.dto.Preference
 
-import com.team1.hangsha.category.dto.core.CategoryDto
+import com.team1.hangsha.user.model.InterestCategoryType
 import io.swagger.v3.oas.annotations.media.Schema
 
 data class ListInterestCategoryResponse(
@@ -8,7 +8,10 @@ data class ListInterestCategoryResponse(
 ) {
     @Schema(name = "InterestCategoryItem")
     data class Item(
-        val category: CategoryDto,
+        val categoryType: InterestCategoryType,
+        val categoryId: Long,
+        val name: String,
+        val sortOrder: Int,
         val priority: Int
     )
 }

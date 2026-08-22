@@ -2,8 +2,7 @@ package com.team1.hangsha.event.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.team1.hangsha.category.repository.CategoryGroupRepository
-import com.team1.hangsha.category.repository.CategoryRepository
+import com.team1.hangsha.category.repository.EventTypeRepository
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,8 +46,7 @@ data class ManualEventDraftSession(
 @Service
 class ManualEventDraftParser(
     private val objectMapper: ObjectMapper,
-    private val categoryGroupRepository: CategoryGroupRepository,
-    private val categoryRepository: CategoryRepository,
+    private val eventTypeRepository: EventTypeRepository,
     @Value("\${elice.ml-api.event-parser.enabled:false}") private val enabled: Boolean,
     @Value("\${elice.ml-api.event-parser.url:https://mlapi.run/286e9158-d32e-436d-a23d-36b43fc8e68a/v1/chat/completions}") private val url: String,
     @Value("\${elice.ml-api.event-parser.model:gpt-5.6-luna}") private val model: String,
@@ -180,8 +178,7 @@ class ManualEventDraftParser(
 
     private fun findEventTypeId(eventType: String?): Long? {
         val typeName = eventType?.trim()?.takeIf { it in PROGRAM_TYPES } ?: return null
-        val groupId = categoryGroupRepository.findByName("프로그램 유형")?.id ?: return null
-        return categoryRepository.findByGroupIdAndName(groupId, typeName)?.id
+        return eventTypeRepository.findByName(typeName)?.id
     }
 
     companion object {

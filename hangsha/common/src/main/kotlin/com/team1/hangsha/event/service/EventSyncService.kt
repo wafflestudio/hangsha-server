@@ -4,9 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.team1.hangsha.category.model.Category
-import com.team1.hangsha.category.repository.CategoryGroupRepository
-import com.team1.hangsha.category.repository.CategoryRepository
+import com.team1.hangsha.category.model.Organization
+import com.team1.hangsha.category.repository.EventTypeRepository
+import com.team1.hangsha.category.repository.OrganizationRepository
+import com.team1.hangsha.category.repository.EventStatusRepository
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
@@ -31,8 +32,9 @@ import java.time.ZoneId
 class EventSyncService(
     private val objectMapper: ObjectMapper,
     private val eventRepository: EventRepository,
-    private val categoryGroupRepository: CategoryGroupRepository,
-    private val categoryRepository: CategoryRepository,
+    private val eventStatusRepository: EventStatusRepository,
+    private val eventTypeRepository: EventTypeRepository,
+    private val organizationRepository: OrganizationRepository,
     private val outboxWriter: EventSearchOutboxWriter,
 ) {
 
@@ -43,10 +45,6 @@ class EventSyncService(
      */
     @Transactional
     fun sync(events: List<CrawledProgramEvent>): SyncResult {
-        val statusGroupId = requireGroupId("모집현황")
-        val typeGroupId = requireGroupId("프로그램 유형")
-        val orgGroupId = requireGroupId("주체기관")
-
         var upserted = 0
         var skipped = 0
 
@@ -60,10 +58,10 @@ class EventSyncService(
             //}
 
             val orgName = e.majorTypes.getOrNull(0)?.trim()?.takeIf { it.isNotBlank() }
-            val orgId = orgName?.let { getOrCreateCategoryId(orgGroupId, it) }
+            val orgId = orgName?.let { getOrCreateOrganizationId(it) }
             val typeName = normalizeProgramType(e)
 
-            val eventTypeId = typeName?.let { findCategoryId(typeGroupId, it) }
+            val eventTypeId = typeName?.let { eventTypeRepository.findByName(it)?.id }
 
             val applyStart = e.applyStart?.let { dateStart(it) }
             val applyEnd = e.applyEnd?.let { dateEnd(it) }
@@ -146,7 +144,7 @@ class EventSyncService(
                     eventEnd = eventEnd,
                     now = now,
                 )
-                val statusId = statusName?.let { findCategoryId(statusGroupId, it) }
+                val statusId = statusName?.let { eventStatusRepository.findByName(it)?.id }
 
                 val crawledTagsJson = if (cleanedTags.isEmpty()) {
                     null
@@ -203,16 +201,15 @@ class EventSyncService(
 
     @Transactional
     fun openStartedWaitingEvents(): Int {
-        val statusGroupId = requireGroupId("모집현황")
-        val waitingStatusId = findCategoryId(statusGroupId, "모집대기")
+        val waitingStatusId = eventStatusRepository.findByName("모집대기")?.id
             ?: throw DomainException(
                 ErrorCode.INTERNAL_ERROR,
-                "Category not found. group=모집현황, name=모집대기"
+                "Recruitment status not found. name=모집대기"
             )
-        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+        val recruitingStatusId = eventStatusRepository.findByName("모집중")?.id
             ?: throw DomainException(
                 ErrorCode.INTERNAL_ERROR,
-                "Category not found. group=모집현황, name=모집중"
+                "Recruitment status not found. name=모집중"
             )
 
         return eventRepository.openStartedEventsByStatus(
@@ -224,24 +221,21 @@ class EventSyncService(
 
     @Transactional
     fun closeExpiredRecruitingEvents(): Int {
-        // @TODO: 굉장히 하드코딩이긴 한데...
-        val statusGroupId = requireGroupId("모집현황")
-
-        val recruitingStatusId = findCategoryId(statusGroupId, "모집중")
+        val recruitingStatusId = eventStatusRepository.findByName("모집중")?.id
             ?: throw DomainException(
                 ErrorCode.INTERNAL_ERROR,
-                "Category not found. group=모집현황, name=모집중"
+                "Recruitment status not found. name=모집중"
             )
 
-        val closedStatusId = findCategoryId(statusGroupId, "모집마감")
+        val closedStatusId = eventStatusRepository.findByName("모집마감")?.id
             ?: throw DomainException(
                 ErrorCode.INTERNAL_ERROR,
-                "Category not found. group=모집현황, name=모집마감"
+                "Recruitment status not found. name=모집마감"
             )
 
         val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
 
-        val unknownStatusId = findCategoryId(statusGroupId, "상태 미제공")
+        val unknownStatusId = eventStatusRepository.findByName("상태 미제공")?.id
 
         val closedRecruiting = eventRepository.closeExpiredEventsByStatus(
             statusId = recruitingStatusId,
@@ -258,20 +252,6 @@ class EventSyncService(
 
         return closedRecruiting + closedUnknown
     }
-
-    private fun requireGroupId(name: String): Long {
-        val group = categoryGroupRepository.findByName(name)
-            ?: throw DomainException(ErrorCode.CATEGORY_GROUP_NOT_FOUND)
-
-        return group.id
-            ?: throw DomainException(
-                ErrorCode.INTERNAL_ERROR,
-                "CategoryGroup.id is null (unexpected). name=$name"
-            )
-    }
-
-    private fun findCategoryId(groupId: Long, name: String): Long? =
-        categoryRepository.findByGroupIdAndName(groupId, name)?.id
 
     private fun resolveApplyLink(e: CrawledProgramEvent): String {
         e.applyLink?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
@@ -321,24 +301,23 @@ class EventSyncService(
     private fun dateEnd(ymd: String): LocalDateTime =
         LocalDate.parse(ymd).atTime(23, 59, 59)
 
-    private fun getOrCreateCategoryId(groupId: Long, rawName: String): Long {
+    private fun getOrCreateOrganizationId(rawName: String): Long {
         val name = rawName.trim()
-        categoryRepository.findByGroupIdAndName(groupId, name)?.id?.let { return it }
+        organizationRepository.findByName(name)?.id?.let { return it }
 
-        val nextSortOrder = runCatching { categoryRepository.findMaxSortOrderByGroupId(groupId) + 1 }
+        val nextSortOrder = runCatching { organizationRepository.findMaxSortOrder() + 1 }
             .getOrDefault(1)
 
         return try {
-            val saved = categoryRepository.save(
-                Category(
-                    groupId = groupId,
+            val saved = organizationRepository.save(
+                Organization(
                     name = name,
                     sortOrder = nextSortOrder
                 )
             )
             saved.id ?: throw DomainException(ErrorCode.CATEGORY_CREATE_FAILED)
         } catch (e: DuplicateKeyException) {
-            categoryRepository.findByGroupIdAndName(groupId, name)?.id ?: throw e
+            organizationRepository.findByName(name)?.id ?: throw e
         }
     }
 
@@ -547,9 +526,7 @@ class EventSyncService(
             eventEnd = req.eventEnd,
         )
         val organization = req.organization?.trim()?.takeIf { it.isNotBlank() }
-        val resolvedOrgId = req.orgId ?: organization?.let {
-            getOrCreateCategoryId(requireGroupId("주체기관"), it)
-        }
+        val resolvedOrgId = req.orgId ?: organization?.let(::getOrCreateOrganizationId)
 
         val units = if (req.sessions.isEmpty()) {
             listOf(Triple(req.eventStart, req.eventEnd, req.location?.trim()))
