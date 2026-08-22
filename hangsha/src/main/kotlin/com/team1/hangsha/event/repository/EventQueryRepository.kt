@@ -328,7 +328,7 @@ private fun StringBuilder.appendExcludedKeywordsFilter(userId: Long?, excludedKe
         append("\n  AND NOT (")
         append(
             excludedKeywords.indices.joinToString(" OR ") { index ->
-                "LOWER(e.title) LIKE CONCAT('%', :excludedKeyword$index, '%')"
+                "LOWER(e.title) LIKE CONCAT('%', :excludedKeyword$index, '%') ESCAPE '!'"
             }
         )
         append(")")

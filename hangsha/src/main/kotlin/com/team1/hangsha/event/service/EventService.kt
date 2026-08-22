@@ -355,7 +355,11 @@ class EventService(
             .map { it.trim().lowercase() }
             .filter { it.isNotBlank() }
             .distinct()
+            .map(::escapeLikeKeyword)
             .toList()
+
+    private fun escapeLikeKeyword(keyword: String): String =
+        keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 }
 
 private data class InterestPriorities(
