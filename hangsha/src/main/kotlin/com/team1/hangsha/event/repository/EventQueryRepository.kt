@@ -21,6 +21,7 @@ class EventQueryRepository(
         orgIds: List<Long>?,
         userId: Long?,
         applyExcludedKeywords: Boolean = true,
+        excludedKeywords: List<String> = emptyList(),
     ): List<Event> {
         val sql = buildString {
             append(
@@ -51,7 +52,7 @@ class EventQueryRepository(
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
             if (applyExcludedKeywords) {
-                appendExcludedKeywordsFilter(userId)
+                appendExcludedKeywordsFilter(userId, excludedKeywords)
             }
 
             appendEventOrderBy(userId)
@@ -65,6 +66,7 @@ class EventQueryRepository(
         if (!eventTypeIds.isNullOrEmpty()) params["eventTypeIds"] = eventTypeIds
         if (!orgIds.isNullOrEmpty()) params["orgIds"] = orgIds
         if (userId != null) params["userId"] = userId
+        excludedKeywords.forEachIndexed { index, keyword -> params["excludedKeyword$index"] = keyword }
 
         return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
     }
@@ -106,7 +108,7 @@ class EventQueryRepository(
             if (!eventTypeIds.isNullOrEmpty()) append("\n  AND event_type_id IN (:eventTypeIds)")
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
             if (applyExcludedKeywords) {
-                appendExcludedKeywordsFilter(userId)
+                appendExcludedKeywordsFilter(userId, emptyList())
             }
         }
 
@@ -129,6 +131,7 @@ class EventQueryRepository(
         orgIds: List<Long>?,
         userId: Long?,
         applyExcludedKeywords: Boolean = true,
+        excludedKeywords: List<String> = emptyList(),
     ): Int {
         val dayStart = date.atStartOfDay()
         val dayEndExclusive = date.plusDays(1).atStartOfDay()
@@ -161,7 +164,7 @@ class EventQueryRepository(
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
             if (applyExcludedKeywords) {
-                appendExcludedKeywordsFilter(userId)
+                appendExcludedKeywordsFilter(userId, excludedKeywords)
             }
         }
 
@@ -173,6 +176,7 @@ class EventQueryRepository(
         if (!eventTypeIds.isNullOrEmpty()) params["eventTypeIds"] = eventTypeIds
         if (!orgIds.isNullOrEmpty()) params["orgIds"] = orgIds
         if (userId != null) params["userId"] = userId
+        excludedKeywords.forEachIndexed { index, keyword -> params["excludedKeyword$index"] = keyword }
 
         return jdbc.queryForObject(sql, params, Int::class.java) ?: 0
     }
@@ -186,6 +190,7 @@ class EventQueryRepository(
         size: Int,
         userId: Long?,
         applyExcludedKeywords: Boolean = true,
+        excludedKeywords: List<String> = emptyList(),
     ): List<Event> {
         val safePage = max(1, page)
         val safeSize = max(1, size)
@@ -222,7 +227,7 @@ class EventQueryRepository(
             if (!orgIds.isNullOrEmpty()) append("\n  AND org_id IN (:orgIds)")
 
             if (applyExcludedKeywords) {
-                appendExcludedKeywordsFilter(userId)
+                appendExcludedKeywordsFilter(userId, excludedKeywords)
             }
 
             appendEventOrderBy(userId)
@@ -239,6 +244,7 @@ class EventQueryRepository(
         if (!eventTypeIds.isNullOrEmpty()) params["eventTypeIds"] = eventTypeIds
         if (!orgIds.isNullOrEmpty()) params["orgIds"] = orgIds
         if (userId != null) params["userId"] = userId
+        excludedKeywords.forEachIndexed { index, keyword -> params["excludedKeyword$index"] = keyword }
 
         return jdbc.query(sql, params) { rs, _ -> rs.toEvent() }
     }
@@ -316,8 +322,18 @@ private fun ResultSet.toEvent(): Event {
     )
 }
 
-private fun StringBuilder.appendExcludedKeywordsFilter(userId: Long?) {
-    if (userId == null) return
+private fun StringBuilder.appendExcludedKeywordsFilter(userId: Long?, excludedKeywords: List<String>) {
+    if (userId == null) {
+        if (excludedKeywords.isEmpty()) return
+        append("\n  AND NOT (")
+        append(
+            excludedKeywords.indices.joinToString(" OR ") { index ->
+                "LOWER(e.title) LIKE CONCAT('%', :excludedKeyword$index, '%')"
+            }
+        )
+        append(")")
+        return
+    }
 
     append(
         """
