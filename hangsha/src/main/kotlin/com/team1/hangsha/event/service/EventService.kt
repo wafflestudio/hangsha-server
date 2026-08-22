@@ -42,6 +42,7 @@ class EventService(
         orgIds: List<Long>?,
         userId: Long?,
         applyExcludedKeywords: Boolean = true,
+        excludedKeywords: List<String>? = null,
     ): MonthEventResponse {
         if (from.isAfter(to)) {
             throw DomainException(ErrorCode.INVALID_REQUEST, "from은 to보다 이후일 수 없습니다")
@@ -58,6 +59,7 @@ class EventService(
             orgIds = orgIds,
             userId = userId,
             applyExcludedKeywords = applyExcludedKeywords,
+            excludedKeywords = explicitExcludedKeywords(userId, applyExcludedKeywords, excludedKeywords),
         )
 
         val interestPriorities = loadInterestPriorities(userId)
@@ -177,12 +179,14 @@ class EventService(
         orgIds: List<Long>?,
         userId: Long?,
         applyExcludedKeywords: Boolean = true,
+        excludedKeywords: List<String>? = null,
     ): DayEventResponse {
+        val explicitExcludedKeywords = explicitExcludedKeywords(userId, applyExcludedKeywords, excludedKeywords)
         val total = eventQueryRepository.countOnDay(
-            date, statusIds, eventTypeIds, orgIds, userId, applyExcludedKeywords
+            date, statusIds, eventTypeIds, orgIds, userId, applyExcludedKeywords, explicitExcludedKeywords
         )
         val events = eventQueryRepository.findOnDayPaged(
-            date, statusIds, eventTypeIds, orgIds, page, size, userId, applyExcludedKeywords
+            date, statusIds, eventTypeIds, orgIds, page, size, userId, applyExcludedKeywords, explicitExcludedKeywords
         )
 
         val interestPriorities = loadInterestPriorities(userId)
@@ -339,6 +343,23 @@ class EventService(
             }
         }
     }
+
+    private fun explicitExcludedKeywords(
+        userId: Long?,
+        applyExcludedKeywords: Boolean,
+        excludedKeywords: List<String>?,
+    ): List<String> =
+        if (userId != null || !applyExcludedKeywords) emptyList()
+        else excludedKeywords.orEmpty()
+            .asSequence()
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .map(::escapeLikeKeyword)
+            .toList()
+
+    private fun escapeLikeKeyword(keyword: String): String =
+        keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 }
 
 private data class InterestPriorities(
