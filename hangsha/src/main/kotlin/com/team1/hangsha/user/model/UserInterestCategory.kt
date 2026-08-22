@@ -5,7 +5,7 @@ import org.springframework.data.relational.core.mapping.Table
 import org.springframework.data.annotation.CreatedDate
 import java.time.Instant
 
-@Table("user_interest_categories")
+@Table("legacy_user_interest_categories")
 data class UserInterestCategory(
     @Id
     val id: Long? = null,
