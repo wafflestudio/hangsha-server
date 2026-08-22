@@ -61,9 +61,6 @@ CREATE TABLE user_interest_categories (
     UNIQUE KEY uk_uic_user_organization (user_id, organization_id),
     UNIQUE KEY uk_uic_user_priority (user_id, priority),
     KEY idx_uic_user_priority (user_id, priority),
-    CONSTRAINT chk_uic_exactly_one_domain CHECK (
-        (event_status_id IS NOT NULL) + (event_type_id IS NOT NULL) + (organization_id IS NOT NULL) = 1
-    ),
     CONSTRAINT fk_uic_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_uic_event_status FOREIGN KEY (event_status_id) REFERENCES event_statuses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_uic_event_type FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE RESTRICT ON UPDATE CASCADE,
