@@ -8,7 +8,7 @@ data class MemoTagResponse(
     val name: String
 )
 
-/** 메모가 달린 행사의 주최기관 (events.org_id -> categories) */
+/** 메모가 달린 행사의 주최기관 (events.org_id -> organizations) */
 data class MemoOrganizationResponse(
     val id: Long,
     val name: String

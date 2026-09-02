@@ -1,7 +1,7 @@
 package com.team1.hangsha
 
-import com.team1.hangsha.category.repository.CategoryGroupRepository
-import com.team1.hangsha.category.repository.CategoryRepository
+import com.team1.hangsha.category.repository.EventStatusRepository
+import com.team1.hangsha.category.repository.EventTypeRepository
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.helper.IntegrationTestBase
 import org.hamcrest.Matchers.nullValue
@@ -15,8 +15,8 @@ import java.time.LocalDate
 
 class EventIntegrationTest : IntegrationTestBase() {
 
-    @Autowired lateinit var categoryGroupRepository: CategoryGroupRepository
-    @Autowired lateinit var categoryRepository: CategoryRepository
+    @Autowired lateinit var eventStatusRepository: EventStatusRepository
+    @Autowired lateinit var eventTypeRepository: EventTypeRepository
     @Autowired lateinit var eventRepository: EventRepository
 
     private fun ymd(d: LocalDate) = d.toString()
@@ -39,13 +39,13 @@ class EventIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    // seed_categories.sql 기반: 실제 존재하는 카테고리 id 조회
+    // 도메인별 seed 데이터 기반: 실제 존재하는 카테고리 id 조회
     private fun seedCategoryId(groupName: String, categoryName: String): Long {
-        val group = categoryGroupRepository.findByName(groupName)
-            ?: error("seed group not found: $groupName")
-        val cat = categoryRepository.findByGroupIdAndName(requireNotNull(group.id), categoryName)
-            ?: error("seed category not found: group=$groupName name=$categoryName")
-        return requireNotNull(cat.id)
+        return when (groupName) {
+            "모집현황" -> requireNotNull(eventStatusRepository.findByName(categoryName)?.id)
+            "프로그램 유형" -> requireNotNull(eventTypeRepository.findByName(categoryName)?.id)
+            else -> error("unsupported category domain: $groupName")
+        }
     }
 
     // =========================================================

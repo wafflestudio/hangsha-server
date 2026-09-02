@@ -41,9 +41,6 @@ enum class ErrorCode(
     PREFERENCE_CATEGORY_NOT_FOUND(HttpStatus.BAD_REQUEST, "카테고리가 존재하지 않습니다"),
     PREFERENCE_PRIORITY_INVALID(HttpStatus.BAD_REQUEST, "우선순위 값이 올바르지 않습니다"),
 
-    // Category
-    CATEGORY_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "카테고리 그룹을 찾을 수 없습니다"),
-    CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다"),
     CATEGORY_CREATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "카테고리 생성에 실패했습니다"),
 
     // Tag

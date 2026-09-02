@@ -14,6 +14,10 @@ data class InterestCategoryRow(
 
 @Repository
 class UserInterestDomainRepository(private val jdbc: NamedParameterJdbcTemplate) {
+    fun deleteAll() {
+        jdbc.update("DELETE FROM user_interest_categories", emptyMap<String, Any>())
+    }
+
     fun findAllByUserId(userId: Long): List<InterestCategoryRow> = jdbc.query(
         """
         SELECT CASE
