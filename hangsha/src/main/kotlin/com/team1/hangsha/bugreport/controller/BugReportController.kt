@@ -8,10 +8,12 @@ import com.team1.hangsha.user.model.User
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
@@ -23,13 +25,15 @@ class BugReportController(
     @PostMapping
     @Operation(
         summary = "버그 리포트 등록",
-        description = "버그 리포트를 저장하고, 알림 채널로 전송을 시도합니다. 비로그인 사용자도 제출할 수 있으며, 이 경우 작성자는 익명으로 기록됩니다. 알림 전송 실패여도 저장은 성공 처리됩니다."
+        description = "버그 리포트를 저장하고, 알림 채널로 전송을 시도합니다. 비로그인 사용자도 제출할 수 있으며, 이 경우 작성자는 익명으로 기록됩니다. 알림 전송 실패여도 저장은 성공 처리됩니다. 요청의 User-Agent 헤더는 알림 메시지에 함께 첨부됩니다."
     )
     fun create(
         @Parameter(hidden = true) @LoggedInUser user: User?,
         @Valid @RequestBody req: CreateBugReportRequest,
+        @Parameter(hidden = true)
+        @RequestHeader(value = HttpHeaders.USER_AGENT, required = false) userAgent: String?,
     ): ResponseEntity<CreateBugReportResponse> {
-        val id = bugReportService.create(req, user?.id)
+        val id = bugReportService.create(req, user?.id, userAgent)
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(CreateBugReportResponse(id = id))
     }

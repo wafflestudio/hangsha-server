@@ -14,7 +14,7 @@ class BugReportService(
 ) {
     private val log = LoggerFactory.getLogger(BugReportService::class.java)
 
-    fun create(req: CreateBugReportRequest, userId: Long?): Long {
+    fun create(req: CreateBugReportRequest, userId: Long?, userAgent: String?): Long {
         val saved = bugReportRepository.save(
             BugReport(
                 userId = userId,
@@ -25,7 +25,7 @@ class BugReportService(
 
         bugReportNotifiers.forEach { notifier ->
             try {
-                notifier.notify(saved)
+                notifier.notify(saved, userAgent)
             } catch (e: Exception) {
                 // B안: 저장은 성공시키고 알림 실패는 로깅만 처리
                 log.error("bug-report notify failed. reportId={}, notifier={}", saved.id, notifier.javaClass.simpleName, e)

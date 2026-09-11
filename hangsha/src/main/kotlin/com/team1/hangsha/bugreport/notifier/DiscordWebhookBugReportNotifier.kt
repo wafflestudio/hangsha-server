@@ -18,7 +18,7 @@ class DiscordWebhookBugReportNotifier(
     private val log = LoggerFactory.getLogger(DiscordWebhookBugReportNotifier::class.java)
     private val restTemplate = RestTemplate()
 
-    override fun notify(report: BugReport) {
+    override fun notify(report: BugReport, userAgent: String?) {
         if (discordWebhookUri.isBlank()) {
             log.warn("bug-report notify skipped: discord_webhook_uri is empty")
             return
@@ -27,23 +27,22 @@ class DiscordWebhookBugReportNotifier(
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
         }
+        val payload = DiscordWebhookPayload(
+            content = buildMessage(report, userAgent),
+            allowedMentions = DiscordAllowedMentions(parse = emptyList()),
+        )
 
-        buildMessages(report).forEach { message ->
-            val payload = DiscordWebhookPayload(
-                content = message,
-                allowedMentions = DiscordAllowedMentions(parse = emptyList()),
-            )
-
-            restTemplate.postForEntity(
-                discordWebhookUri,
-                HttpEntity(payload, headers),
-                String::class.java
-            )
-        }
+        restTemplate.postForEntity(
+            discordWebhookUri,
+            HttpEntity(payload, headers),
+            String::class.java
+        )
     }
 
-    private fun buildMessages(report: BugReport): List<String> {
-        val header = buildString {
+    // 각 필드를 FIELD_LIMIT으로 잘라 메시지 길이를 항상 Discord 한도 안에 묶는다.
+    // 덕분에 리포트 1건은 웹훅 호출 1번으로 끝난다. 잘린 전문은 bug_reports 테이블에 그대로 남아 있다.
+    private fun buildMessage(report: BugReport, userAgent: String?): String {
+        val message = buildString {
 
             appendLine("[작성자 id]")
             appendLine(report.userId?.toString() ?: "anonymous")
@@ -54,25 +53,23 @@ class DiscordWebhookBugReportNotifier(
             appendLine()
 
             appendLine("[타이틀]")
-            appendLine(report.title)
+            appendLine(truncate(report.title))
             appendLine()
 
             appendLine("[컨텐츠]")
-        }
-        val chunkSize = maxOf(1, DISCORD_CONTENT_LIMIT - header.length - PART_LABEL_LIMIT)
-        val chunks = report.content.chunked(chunkSize)
+            appendLine(truncate(report.content))
+            appendLine()
 
-        return chunks.mapIndexed { index, chunk ->
-            buildString {
-                append(header)
-                if (chunks.size > 1) {
-                    appendLine("(part ${index + 1}/${chunks.size})")
-                    appendLine()
-                }
-                append(chunk)
-            }
+            appendLine("[User-Agent Header]")
+            append(truncate(userAgent?.takeIf { it.isNotBlank() } ?: "unknown"))
         }
+
+        // 작성자 id·작성 시각까지 더해도 한도에 한참 못 미치지만, 웹훅이 400으로 떨어지는 일만은 없게 마지막 안전장치를 둔다.
+        return message.take(DISCORD_CONTENT_LIMIT)
     }
+
+    private fun truncate(value: String): String =
+        if (value.length > FIELD_LIMIT) value.take(FIELD_LIMIT) + TRUNCATION_MARK else value
 
     data class DiscordWebhookPayload(
         val content: String,
@@ -86,6 +83,7 @@ class DiscordWebhookBugReportNotifier(
 
     companion object {
         private const val DISCORD_CONTENT_LIMIT = 2000
-        private const val PART_LABEL_LIMIT = 32
+        private const val FIELD_LIMIT = 512
+        private const val TRUNCATION_MARK = "…(생략)"
     }
 }
