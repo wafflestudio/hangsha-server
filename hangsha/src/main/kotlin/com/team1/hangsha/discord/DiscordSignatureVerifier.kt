@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import java.time.Instant
 
 @Component
 class DiscordSignatureVerifier(
@@ -14,6 +15,9 @@ class DiscordSignatureVerifier(
         if (applicationPublicKey.isBlank() || timestamp.isNullOrBlank() || signature.isNullOrBlank()) return false
 
         return runCatching {
+            val sentAt = Instant.ofEpochSecond(timestamp.toLong())
+            require(!sentAt.isBefore(Instant.now().minusSeconds(MAX_AGE_SECONDS)))
+            require(!sentAt.isAfter(Instant.now().plusSeconds(MAX_FUTURE_SKEW_SECONDS)))
             val rawKey = applicationPublicKey.hexToBytes()
             require(rawKey.size == ED25519_PUBLIC_KEY_SIZE)
             val key = KeyFactory.getInstance("Ed25519").generatePublic(
@@ -35,6 +39,8 @@ class DiscordSignatureVerifier(
 
     private companion object {
         const val ED25519_PUBLIC_KEY_SIZE = 32
+        const val MAX_AGE_SECONDS = 300L
+        const val MAX_FUTURE_SKEW_SECONDS = 60L
         val ED25519_X509_PREFIX = byteArrayOf(
             0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
         )

@@ -24,6 +24,7 @@ import org.springframework.web.server.ResponseStatusException
 @RequestMapping("/api/v1/discord")
 class DiscordInteractionController(
     private val signatureVerifier: DiscordSignatureVerifier,
+    private val deduplicator: DiscordInteractionDeduplicator,
     private val objectMapper: ObjectMapper,
     private val eventSyncService: EventSyncService,
 ) {
@@ -40,7 +41,13 @@ class DiscordInteractionController(
         val interaction = objectMapper.readTree(body)
         return when (interaction.path("type").asInt()) {
             PING -> mapOf("type" to PONG)
-            APPLICATION_COMMAND -> handleCommand(interaction)
+            APPLICATION_COMMAND -> {
+                if (!deduplicator.claim(interaction.path("id").asText())) {
+                    response("이미 처리된 요청입니다.")
+                } else {
+                    handleCommand(interaction)
+                }
+            }
             else -> response("지원하지 않는 Discord interaction입니다.")
         }
     }

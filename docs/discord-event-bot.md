@@ -5,6 +5,8 @@ Discord Developer Portal에서 Application의 **Interactions Endpoint URL**을
 `DISCORD_APPLICATION_PUBLIC_KEY`에 설정한다. 이 엔드포인트는 Discord Ed25519 서명만
 허용한다.
 
+서명 timestamp는 5분 이내여야 하며, interaction ID는 DB에서 한 번만 처리한다.
+
 다음 application command를 등록한다.
 
 | Command | Required options |
