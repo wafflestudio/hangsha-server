@@ -1,7 +1,5 @@
 package com.team1.hangsha.helper
 
-import com.team1.hangsha.category.model.Category
-import com.team1.hangsha.category.model.CategoryGroup
 import com.team1.hangsha.category.model.Organization
 import com.team1.hangsha.common.enums.CourseSource
 import com.team1.hangsha.common.enums.DayOfWeek
@@ -19,9 +17,6 @@ import com.team1.hangsha.user.model.AuthProvider
 import com.team1.hangsha.user.model.AuthTokenPair
 import com.team1.hangsha.user.model.User
 import com.team1.hangsha.user.model.UserIdentity
-import com.team1.hangsha.user.model.UserInterestCategory
-import com.team1.hangsha.category.repository.CategoryGroupRepository
-import com.team1.hangsha.category.repository.CategoryRepository
 import com.team1.hangsha.category.repository.OrganizationRepository
 import com.team1.hangsha.course.repository.CourseRepository
 import com.team1.hangsha.course.repository.CourseTimeSlotRepository
@@ -31,7 +26,6 @@ import com.team1.hangsha.tag.repository.TagRepository
 import com.team1.hangsha.timetable.repository.EnrollRepository
 import com.team1.hangsha.timetable.repository.TimetableRepository
 import com.team1.hangsha.user.repository.UserIdentityRepository
-import com.team1.hangsha.user.repository.UserInterestCategoryRepository
 import com.team1.hangsha.user.repository.UserInterestDomainRepository
 import com.team1.hangsha.user.model.InterestCategoryType
 import com.team1.hangsha.user.repository.UserRepository
@@ -45,12 +39,9 @@ import kotlin.random.Random
 class DataGenerator(
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
-    private val userInterestCategoryRepository: UserInterestCategoryRepository,
     private val userInterestDomainRepository: UserInterestDomainRepository,
     private val jwtTokenProvider: JwtTokenProvider,
 
-    private val categoryGroupRepository: CategoryGroupRepository,
-    private val categoryRepository: CategoryRepository,
     private val organizationRepository: OrganizationRepository,
 
     private val eventRepository: EventRepository,
@@ -146,37 +137,8 @@ class DataGenerator(
     }
 
     // ----------------------------
-    // Category / CategoryGroup
+    // Categories
     // ----------------------------
-
-    fun generateCategoryGroup(
-        name: String? = null,
-        sortOrder: Int? = null,
-    ): CategoryGroup {
-        val n = next()
-        return categoryGroupRepository.save(
-            CategoryGroup(
-                name = name ?: "group-$n",
-                sortOrder = sortOrder ?: (n % 100).toInt(),
-            ),
-        )
-    }
-
-    fun generateCategory(
-        group: CategoryGroup? = null,
-        name: String? = null,
-        sortOrder: Int? = null,
-    ): Category {
-        val n = next()
-        val g = group ?: generateCategoryGroup()
-        return categoryRepository.save(
-            Category(
-                groupId = g.id!!,
-                name = name ?: "category-$n",
-                sortOrder = sortOrder ?: (n % 100).toInt(),
-            ),
-        )
-    }
 
     /**
      * orgId 필터용 카테고리 필요할 때 사용.
@@ -188,48 +150,11 @@ class DataGenerator(
     }
 
     // ----------------------------
-    // UserInterestCategory (onboarding)
+    // User interests
     // ----------------------------
-
-    fun addUserInterestCategory(
-        user: User,
-        category: Category,
-        priority: Int = 1,
-    ): UserInterestCategory {
-        return userInterestCategoryRepository.save(
-            UserInterestCategory(
-                userId = user.id!!,
-                categoryId = category.id!!,
-                priority = priority,
-            ),
-        )
-    }
 
     fun addUserInterestCategory(user: User, organization: Organization, priority: Int = 1) {
         userInterestDomainRepository.add(user.id!!, InterestCategoryType.ORGANIZATION, organization.id!!, priority)
-    }
-
-    /**
-     * "전체 교체" PUT 테스트를 위한 편의 메서드.
-     * repo에 deleteAllByUserId가 있으면 제일 좋고,
-     * 없으면 테스트 클래스에서 @DirtiesContext / cleanupAll로 격리하는 걸 추천.
-     */
-    fun replaceAllUserInterestCategories(
-        user: User,
-        categoryIdsInPriorityOrder: List<Long>,
-    ) {
-        // 있으면 쓰고, 없으면 그냥 추가만 하도록(테스트 격리 전략으로 커버)
-        runCatching { userInterestCategoryRepository.deleteAllByUserId(user.id!!) }
-
-        categoryIdsInPriorityOrder.forEachIndexed { idx, cid ->
-            userInterestCategoryRepository.save(
-                UserInterestCategory(
-                    userId = user.id!!,
-                    categoryId = cid,
-                    priority = idx + 1,
-                ),
-            )
-        }
     }
 
     // ----------------------------
@@ -441,11 +366,10 @@ class DataGenerator(
         memoRepository.deleteAll()
         tagRepository.deleteAll()
 
-        userInterestCategoryRepository.deleteAll()
+        userInterestDomainRepository.deleteAll()
 
         eventRepository.deleteAll()
-        categoryRepository.deleteAll()
-        categoryGroupRepository.deleteAll()
+        organizationRepository.deleteAll()
 
         userIdentityRepository.deleteAll()
         userRepository.deleteAll()

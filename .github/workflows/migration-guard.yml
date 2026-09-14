@@ -1,0 +1,27 @@
+name: Migration Guard
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-flyway-migrations:
+    name: Validate Flyway migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout pull request merge result
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate migration versions and immutability
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/check-flyway-migrations.sh "$BASE_SHA" "$HEAD_SHA" HEAD

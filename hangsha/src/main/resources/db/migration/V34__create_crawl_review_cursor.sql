@@ -1,0 +1,6 @@
+CREATE TABLE crawl_review_cursors (
+    name VARCHAR(64) NOT NULL,
+    last_event_id BIGINT NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

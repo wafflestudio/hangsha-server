@@ -6,6 +6,7 @@ import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
 import com.team1.hangsha.batch.crawler.SnuNowCrawler
+import com.team1.hangsha.batch.review.CrawlReviewService
 import com.team1.hangsha.common.upload.OciUploadService
 import com.team1.hangsha.config.DatabaseConfig
 import com.team1.hangsha.config.OciConfig
@@ -34,6 +35,7 @@ import kotlin.system.exitProcess
 class ExtraSnuSyncRunner(
     private val eventSyncServiceProvider: ObjectProvider<EventSyncService>,
     private val eventRepositoryProvider: ObjectProvider<EventRepository>,
+    private val crawlReviewServiceProvider: ObjectProvider<CrawlReviewService>,
     private val ociUploadService: OciUploadService,
     private val eliceEventParserClient: EliceEventParserClient,
     private val objectMapper: ObjectMapper,
@@ -46,6 +48,8 @@ class ExtraSnuSyncRunner(
         }
 
         val opt = BatchArgs.from(args)
+        val crawlReview = if (opt.dumpOnly) null else crawlReviewServiceProvider.getIfAvailable()
+        crawlReview?.beginRun()
 
         val applyChkCodes = listOf("0001", "0002", "0003", "0004")
 
@@ -89,7 +93,12 @@ class ExtraSnuSyncRunner(
                     dumpBuffer += crawledEvents
                 }
 
-                val detailFilter = filterEventsWithParsedDetail(crawledEvents, source = "Extra SNU", page = page.toString())
+                val detailFilter = filterEventsWithParsedDetail(
+                    crawledEvents,
+                    source = "Extra SNU",
+                    page = page.toString(),
+                    crawlReview = crawlReview,
+                )
                 val syncEvents = detailFilter.events
 
                 totalSkipped += detailFilter.skipped
@@ -123,6 +132,12 @@ class ExtraSnuSyncRunner(
                 val parsedPage = crawler.crawlPage(page, crawlOptions)
                 if (parsedPage == null) {
                     println("SNU Now page $page: fetch failed, stopping.")
+                    crawlReview?.recordSkipped(
+                        source = "SNU Now",
+                        title = "목록 페이지 $page",
+                        applyLink = crawler.buildListUrl(page, crawlOptions),
+                        reason = "목록 페이지를 읽지 못해 이후 행사를 확인하지 못함",
+                    )
                     break
                 }
                 if (parsedPage.hasNoResultsMessage) {
@@ -156,7 +171,12 @@ class ExtraSnuSyncRunner(
                     items = newItems.items,
                     referer = crawler.buildListUrl(page, crawlOptions),
                 )
-                val detailFilter = filterEventsWithParsedDetail(snuNowEvents, source = "SNU Now", page = page.toString())
+                val detailFilter = filterEventsWithParsedDetail(
+                    snuNowEvents,
+                    source = "SNU Now",
+                    page = page.toString(),
+                    crawlReview = crawlReview,
+                )
                 val detailEvents = detailFilter.events
                 totalSkipped += detailFilter.skipped
 
@@ -196,6 +216,7 @@ class ExtraSnuSyncRunner(
         } else {
             val openedRecruiting = eventSyncService().openStartedWaitingEvents()
             val closedExpired = eventSyncService().closeExpiredRecruitingEvents() // 행사 마감 처리
+            crawlReview?.reportAndAdvance()
 
             println(
                 "Synced $totalUpserted rows from $totalCrawled crawled events " +
@@ -254,8 +275,19 @@ class ExtraSnuSyncRunner(
         events: List<CrawledProgramEvent>,
         source: String,
         page: String? = null,
+        crawlReview: CrawlReviewService? = null,
     ): DetailFilterResult {
         val filtered = events.filter { !it.mainContentHtml.isNullOrBlank() }
+        events.asSequence()
+            .filter { it.mainContentHtml.isNullOrBlank() }
+            .forEach { event ->
+                crawlReview?.recordSkipped(
+                    source = source,
+                    title = event.title,
+                    applyLink = event.applyLink,
+                    reason = "상세 본문을 읽지 못해 DB 저장 대상에서 제외됨",
+                )
+            }
         val skipped = events.size - filtered.size
         if (skipped > 0) {
             val pageText = page?.let { " page=$it" }.orEmpty()
