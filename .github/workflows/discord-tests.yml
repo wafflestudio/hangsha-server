@@ -1,0 +1,28 @@
+name: Discord commands
+
+on:
+  pull_request:
+    paths:
+      - 'hangsha/src/main/kotlin/com/team1/hangsha/discord/**'
+      - 'hangsha/src/test/kotlin/com/team1/hangsha/discord/**'
+      - '.github/workflows/discord-tests.yml'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Test Discord commands
+        working-directory: hangsha
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :test --tests 'com.team1.hangsha.discord.DiscordInteractionControllerTest'
