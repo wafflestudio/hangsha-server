@@ -11,8 +11,8 @@ Discord Developer Portal에서 Application의 **Interactions Endpoint URL**을
 
 | Command | Required options |
 | --- | --- |
-| `event-create` | `payload` (String): admin 생성 API와 동일한 `EventCreateRequest` JSON |
-| `event-patch` | `event_id` (Integer), `payload` (String): admin 수정 API와 동일한 `EventPatchRequest` JSON |
+| `event-create` | `title` (String), 필요한 행사 필드를 선택 옵션으로 입력 |
+| `event-patch` | `event_id` (Integer), 변경할 행사 필드를 선택 옵션으로 입력 |
 | `event-delete` | `event_id` (Integer) |
 | `event-detail` | `event_id` (Integer): 조회할 행사 ID |
 | `event-search` | `query` (String): 제목·본문 검색어 |
@@ -38,10 +38,12 @@ Discord Developer Portal에서 Application의 **Interactions Endpoint URL**을
 
 예시:
 
-```json
-{"title":"새 행사","organization":"학생처","eventStart":"2026-09-03T10:00:00","eventEnd":"2026-09-03T12:00:00","tags":["특강"]}
+```text
+/event-create title:새 행사 organization:학생처 event_start:2026-09-03T10:00:00 event_end:2026-09-03T12:00:00
+/event-patch event_id:123 location:문화관 apply_link:https://example.com/apply
 ```
 
-`event-patch`의 payload는 admin page와 마찬가지로 null을 변경하지 않는 값으로 취급한다.
-전송한 non-null 필드는 `adminOverriddenFields`에 기록된다. `applyLink`는 기존 admin API와
-동일하게 수정하지 않는다.
+생성·수정에서 지원하는 필드는 `title`, `main_content`, `event_type_id`, `org_id`,
+`apply_start`, `apply_end`, `event_start`, `event_end`, `is_period_event`, `organization`,
+`location`, `apply_link`이다. 날짜와 시간은 `2026-10-10T14:00:00` 형식으로 입력한다.
+수정에서는 전달한 필드만 변경하며 `apply_link`도 수정할 수 있다.
