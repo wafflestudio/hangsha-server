@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.EventDto
+import com.team1.hangsha.event.dto.request.EventCreateRequest
+import com.team1.hangsha.event.dto.request.EventPatchRequest
 import com.team1.hangsha.event.dto.response.DetailEventResponse
 import com.team1.hangsha.event.dto.response.SearchEventItem
 import com.team1.hangsha.event.dto.response.SearchEventResponse
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.*
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDateTime
 
 class DiscordInteractionControllerTest {
     private val mapper = ObjectMapper()
@@ -106,6 +109,63 @@ class DiscordInteractionControllerTest {
         assertEquals("삭제 완료: 행사 #42", command("event-delete", mapOf("event_id" to 42))["content"])
         verify(writes).deleteEvent(42)
         verifyNoInteractions(events)
+    }
+
+    @Test
+    fun `create maps Discord fields without a JSON payload`() {
+        `when`(writes.createEvent(any(EventCreateRequest::class.java)))
+            .thenReturn(mapOf("ok" to true, "eventId" to 77L))
+
+        val data = command("event-create", mapOf(
+            "title" to "AI 특강",
+            "main_content" to "행사 설명",
+            "event_type_id" to 2,
+            "org_id" to 3,
+            "apply_start" to "2026-10-01T09:00:00",
+            "apply_end" to "2026-10-09T23:59:59",
+            "event_start" to "2026-10-10T14:00:00",
+            "event_end" to "2026-10-10T16:00:00",
+            "is_period_event" to false,
+            "organization" to "컴퓨터공학부",
+            "location" to "301동",
+            "apply_link" to "https://example.com/apply",
+        ))
+
+        assertEquals("생성 완료: 행사 #77", data["content"])
+        verify(writes).createEvent(EventCreateRequest(
+            title = "AI 특강",
+            mainContentHtml = "행사 설명",
+            eventTypeId = 2,
+            orgId = 3,
+            applyStart = LocalDateTime.parse("2026-10-01T09:00:00"),
+            applyEnd = LocalDateTime.parse("2026-10-09T23:59:59"),
+            eventStart = LocalDateTime.parse("2026-10-10T14:00:00"),
+            eventEnd = LocalDateTime.parse("2026-10-10T16:00:00"),
+            isPeriodEvent = false,
+            organization = "컴퓨터공학부",
+            location = "301동",
+            applyLink = "https://example.com/apply",
+        ))
+    }
+
+    @Test
+    fun `patch maps only supplied Discord fields`() {
+        `when`(writes.patchEvent(anyLong(), any(EventPatchRequest::class.java)))
+            .thenReturn(mapOf("ok" to true, "eventId" to 77L))
+
+        val data = command("event-patch", mapOf(
+            "event_id" to 77,
+            "title" to "수정된 행사",
+            "is_period_event" to true,
+            "apply_link" to "https://example.com/new",
+        ))
+
+        assertEquals("수정 완료: 행사 #77", data["content"])
+        verify(writes).patchEvent(77, EventPatchRequest(
+            title = "수정된 행사",
+            isPeriodEvent = true,
+            applyLink = "https://example.com/new",
+        ))
     }
 
     @Test

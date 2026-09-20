@@ -2,7 +2,6 @@ package com.team1.hangsha.discord
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.event.dto.request.EventCreateRequest
 import com.team1.hangsha.event.dto.request.EventPatchRequest
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDateTime
 
 /**
  * Discord application-command adapter. Business rules intentionally stay in
@@ -80,14 +80,42 @@ class DiscordInteractionController(
                 response(DiscordEventMessages.search(result))
             }
             "event-create" -> {
-                val req = readPayload(data, EventCreateRequest::class.java)
+                val title = option(data, "title").trim()
+                require(title.isNotEmpty()) { "title이 필요합니다." }
+                val req = EventCreateRequest(
+                    title = title,
+                    mainContentHtml = optional(data, "main_content"),
+                    eventTypeId = positiveId(data, "event_type_id"),
+                    orgId = positiveId(data, "org_id"),
+                    applyStart = dateTime(data, "apply_start"),
+                    applyEnd = dateTime(data, "apply_end"),
+                    eventStart = dateTime(data, "event_start"),
+                    eventEnd = dateTime(data, "event_end"),
+                    isPeriodEvent = boolean(data, "is_period_event"),
+                    organization = optional(data, "organization"),
+                    location = optional(data, "location"),
+                    applyLink = optional(data, "apply_link"),
+                )
                 val result = eventSyncService.createEvent(req)
                 response("생성 완료: 행사 #${result["eventId"]}")
             }
             "event-patch" -> {
                 val eventId = option(data, "event_id").toLongOrNull()
                     ?: return response("event_id는 숫자여야 합니다.")
-                val req = readPayload(data, EventPatchRequest::class.java)
+                val req = EventPatchRequest(
+                    title = optional(data, "title"),
+                    mainContentHtml = optional(data, "main_content"),
+                    eventTypeId = positiveId(data, "event_type_id"),
+                    orgId = positiveId(data, "org_id"),
+                    applyStart = dateTime(data, "apply_start"),
+                    applyEnd = dateTime(data, "apply_end"),
+                    eventStart = dateTime(data, "event_start"),
+                    eventEnd = dateTime(data, "event_end"),
+                    isPeriodEvent = boolean(data, "is_period_event"),
+                    organization = optional(data, "organization"),
+                    location = optional(data, "location"),
+                    applyLink = optional(data, "apply_link"),
+                )
                 val result = eventSyncService.patchEvent(eventId, req)
                 response("수정 완료: 행사 #${result["eventId"]}")
             }
@@ -101,8 +129,6 @@ class DiscordInteractionController(
         }
     } catch (e: DomainException) {
         response(e.message ?: e.errorCode.message)
-    } catch (e: JsonProcessingException) {
-        response("payload JSON 형식이 올바르지 않습니다.")
     } catch (e: IllegalArgumentException) {
         response("입력 형식이 올바르지 않습니다: ${e.message}")
     }
@@ -115,10 +141,18 @@ class DiscordInteractionController(
         return id
     }
 
-    private fun <T> readPayload(data: JsonNode, type: Class<T>): T {
-        val payload = option(data, "payload")
-        if (payload.isBlank()) throw IllegalArgumentException("payload가 필요합니다.")
-        return objectMapper.readValue(payload, type)
+    private fun optional(data: JsonNode, name: String): String? = option(data, name)
+        .trim().takeIf { it.isNotEmpty() }
+
+    private fun dateTime(data: JsonNode, name: String): LocalDateTime? {
+        val value = optional(data, name) ?: return null
+        return runCatching { LocalDateTime.parse(value) }
+            .getOrElse { throw IllegalArgumentException("$name 는 2026-10-10T14:00:00 형식이어야 합니다.") }
+    }
+
+    private fun boolean(data: JsonNode, name: String): Boolean? {
+        val node = data.path("options").firstOrNull { it.path("name").asText() == name } ?: return null
+        return node.path("value").takeUnless { it.isMissingNode || it.isNull }?.asBoolean()
     }
 
     private fun option(data: JsonNode, name: String): String = data.path("options")
