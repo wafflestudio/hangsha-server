@@ -113,8 +113,21 @@ class DiscordInteractionControllerTest {
 
     @Test
     fun `create maps Discord fields without a JSON payload`() {
-        `when`(writes.createEvent(any(EventCreateRequest::class.java)))
-            .thenReturn(mapOf("ok" to true, "eventId" to 77L))
+        val expected = EventCreateRequest(
+            title = "AI 특강",
+            mainContentHtml = "행사 설명",
+            eventTypeId = 2,
+            orgId = 3,
+            applyStart = LocalDateTime.parse("2026-10-01T09:00:00"),
+            applyEnd = LocalDateTime.parse("2026-10-09T23:59:59"),
+            eventStart = LocalDateTime.parse("2026-10-10T14:00:00"),
+            eventEnd = LocalDateTime.parse("2026-10-10T16:00:00"),
+            isPeriodEvent = false,
+            organization = "컴퓨터공학부",
+            location = "301동",
+            applyLink = "https://example.com/apply",
+        )
+        `when`(writes.createEvent(expected)).thenReturn(mapOf("ok" to true, "eventId" to 77L))
 
         val data = command("event-create", mapOf(
             "title" to "AI 특강",
@@ -132,26 +145,17 @@ class DiscordInteractionControllerTest {
         ))
 
         assertEquals("생성 완료: 행사 #77", data["content"])
-        verify(writes).createEvent(EventCreateRequest(
-            title = "AI 특강",
-            mainContentHtml = "행사 설명",
-            eventTypeId = 2,
-            orgId = 3,
-            applyStart = LocalDateTime.parse("2026-10-01T09:00:00"),
-            applyEnd = LocalDateTime.parse("2026-10-09T23:59:59"),
-            eventStart = LocalDateTime.parse("2026-10-10T14:00:00"),
-            eventEnd = LocalDateTime.parse("2026-10-10T16:00:00"),
-            isPeriodEvent = false,
-            organization = "컴퓨터공학부",
-            location = "301동",
-            applyLink = "https://example.com/apply",
-        ))
+        verify(writes).createEvent(expected)
     }
 
     @Test
     fun `patch maps only supplied Discord fields`() {
-        `when`(writes.patchEvent(anyLong(), any(EventPatchRequest::class.java)))
-            .thenReturn(mapOf("ok" to true, "eventId" to 77L))
+        val expected = EventPatchRequest(
+            title = "수정된 행사",
+            isPeriodEvent = true,
+            applyLink = "https://example.com/new",
+        )
+        `when`(writes.patchEvent(77, expected)).thenReturn(mapOf("ok" to true, "eventId" to 77L))
 
         val data = command("event-patch", mapOf(
             "event_id" to 77,
@@ -161,11 +165,7 @@ class DiscordInteractionControllerTest {
         ))
 
         assertEquals("수정 완료: 행사 #77", data["content"])
-        verify(writes).patchEvent(77, EventPatchRequest(
-            title = "수정된 행사",
-            isPeriodEvent = true,
-            applyLink = "https://example.com/new",
-        ))
+        verify(writes).patchEvent(77, expected)
     }
 
     @Test
