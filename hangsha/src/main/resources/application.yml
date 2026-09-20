@@ -170,3 +170,6 @@ auth:
     same-site: None
 email:
   sender: oci
+
+discord:
+  application-public-key: "abcc1a5c4e8f6724a4ce0e1de3d68e65f32fe0c5a8f65451d41a1409a1f19311"
