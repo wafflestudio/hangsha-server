@@ -2,6 +2,7 @@ package com.team1.hangsha.batch.review
 
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 import java.time.LocalDateTime
 
 class CrawlReviewFormatterTest {
@@ -43,9 +44,11 @@ class CrawlReviewFormatterTest {
 
         assertContains(report, "신규 원문 1건 / 저장 행사 2건")
         assertContains(report, "#10, #11 여름 공모전 모집")
-        assertContains(report, "일반 행사인데 기간이 7일을 초과함")
+        assertContains(report, "[⚠ 확인 필요]")
+        assertContains(report, "⚠ 문제: 일반 행사인데 기간이 7일을 초과함")
         assertContains(report, "공모전·인턴십·학생기자단 제목인데 period event가 아님")
-        assertContains(report, "[크롤링 중 저장 누락]")
+        assertContains(report, "[⚠ 저장 누락]")
+        assertContains(report, "⚠ 문제: 상세 본문을 읽지 못함")
     }
 
     @Test
@@ -76,4 +79,35 @@ class CrawlReviewFormatterTest {
         assertContains(report, "지원하지 않는 원문 링크 형식")
         assertContains(report, "본문 텍스트가 없음")
     }
+    @Test
+    fun `normal events show title and link without detail fields or warning section`() {
+        val start = LocalDateTime.of(2026, 10, 28, 13, 0)
+        val report = CrawlReviewFormatter.format(
+            events = listOf(
+                ReviewEvent(
+                    id = 1362,
+                    title = "대학원생 자기이해 워크숍",
+                    applyStart = start.minusDays(26),
+                    applyEnd = start.minusDays(16),
+                    eventStart = start,
+                    eventEnd = start.plusHours(3),
+                    isPeriodEvent = false,
+                    organization = "경력개발센터",
+                    location = "208호",
+                    applyLink = "https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=PGM012002295",
+                    mainContentHtml = "<p>행사 안내</p>",
+                ),
+            ),
+            skipped = emptyList(),
+        )
+
+        assertContains(report, "- #1362 대학원생 자기이해 워크숍")
+        assertFalse(report.contains("https://extra.snu.ac.kr/ptfol/pgm/view.do?dataSeq=PGM012002295"))
+        assertFalse(report.contains("[⚠ 확인 필요]"))
+        assertFalse(report.contains("  행사:"))
+        assertFalse(report.contains("  신청:"))
+        assertFalse(report.contains("  주최:"))
+        assertFalse(report.contains("  장소:"))
+    }
+
 }

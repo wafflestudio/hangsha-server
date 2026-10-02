@@ -201,36 +201,39 @@ object CrawlReviewFormatter {
 
     fun format(events: List<ReviewEvent>, skipped: List<SkippedCrawl>): String = buildString {
         val groups = events.groupBy { it.applyLink ?: "event:${it.id}" }
-        val flagged = groups.values.count { group -> group.flatMap(::issuesFor).isNotEmpty() }
+        val flaggedGroups = groups.values.mapNotNull { group ->
+            group.flatMap(::issuesFor).distinct().takeIf { it.isNotEmpty() }?.let { group to it }
+        }
         appendLine("[행사 크롤링 검수]")
-        appendLine("신규 원문 ${groups.size}건 / 저장 행사 ${events.size}건 / 확인 필요 ${flagged}건 / 저장 누락 ${skipped.size}건")
+        appendLine("신규 원문 ${groups.size}건 / 저장 행사 ${events.size}건 / 확인 필요 ${flaggedGroups.size}건 / 저장 누락 ${skipped.size}건")
 
         if (groups.isNotEmpty()) {
             appendLine()
             appendLine("[신규 행사]")
-            groups.values.forEach { group -> appendEventGroup(group) }
+            groups.values.forEach { group ->
+                val first = group.first()
+                appendLine("- #${group.joinToString(", #") { it.id.toString() }} ${first.title}")
+            }
+        }
+        if (flaggedGroups.isNotEmpty()) {
+            appendLine()
+            appendLine("[⚠ 확인 필요]")
+            flaggedGroups.forEach { (group, issues) ->
+                appendLine("- #${group.joinToString(", #") { it.id.toString() }} ${group.first().title}")
+                issues.forEach { appendLine("  ⚠ 문제: $it") }
+                group.first().applyLink?.let { appendLine("  $it") }
+            }
         }
         if (skipped.isNotEmpty()) {
             appendLine()
-            appendLine("[크롤링 중 저장 누락]")
+            appendLine("[⚠ 저장 누락]")
             skipped.distinct().forEach { item ->
-                appendLine("- ${item.title.ifBlank { "(제목 없음)" } } (${item.source}): ${item.reason}")
+                appendLine("- ${item.title.ifBlank { "(제목 없음)" }} (${item.source})")
+                appendLine("  ⚠ 문제: ${item.reason}")
                 item.applyLink?.let { appendLine("  $it") }
             }
         }
     }.trimEnd()
-
-    private fun StringBuilder.appendEventGroup(group: List<ReviewEvent>) {
-        val first = group.first()
-        val issues = group.flatMap(::issuesFor).distinct()
-        appendLine("- #${group.joinToString(", #") { it.id.toString() }} ${first.title}")
-        appendLine("  행사: ${group.joinToString(" / ") { formatPeriod(it.eventStart, it.eventEnd) }}")
-        appendLine("  신청: ${formatPeriod(first.applyStart, first.applyEnd)}")
-        first.organization?.takeIf { it.isNotBlank() }?.let { appendLine("  주최: $it") }
-        first.location?.takeIf { it.isNotBlank() }?.let { appendLine("  장소: $it") }
-        issues.forEach { appendLine("  확인: $it") }
-        first.applyLink?.let { appendLine("  $it") }
-    }
 
     private fun issuesFor(event: ReviewEvent): List<String> = buildList {
         if (event.applyStart != null && event.applyEnd != null && event.applyStart > event.applyEnd) add("신청 시작일이 종료일보다 늦음")
