@@ -1,6 +1,7 @@
 package com.team1.hangsha.batch.job
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.team1.hangsha.batch.ai.DuplicateCandidateGroup
 import com.team1.hangsha.batch.ai.EliceEventParserClient
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
@@ -13,6 +14,7 @@ import com.team1.hangsha.config.OciConfig
 import com.team1.hangsha.config.TestValueLogger
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
+import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.model.EventPeriodPolicy
 import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.event.service.EventSyncService
@@ -28,6 +30,8 @@ import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import kotlin.system.exitProcess
 
 @Component
@@ -197,7 +201,14 @@ class ExtraSnuSyncRunner(
                     continue
                 }
 
-                val result = eventSyncService().sync(parsedSnuNowEvents)
+                val duplicateFilter = if (opt.aiParser) {
+                    filterCrossSourceDuplicates(parsedSnuNowEvents)
+                } else {
+                    DuplicateFilterResult(parsedSnuNowEvents, skipped = 0)
+                }
+                totalSkipped += duplicateFilter.skipped
+
+                val result = eventSyncService().sync(duplicateFilter.events)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
@@ -271,6 +282,34 @@ class ExtraSnuSyncRunner(
         return eliceEventParserClient.enrich(events, batchSize)
     }
 
+    private fun filterCrossSourceDuplicates(events: List<CrawledProgramEvent>): DuplicateFilterResult {
+        val repository = eventRepositoryProvider.getIfAvailable()
+            ?: return DuplicateFilterResult(events, skipped = 0)
+        val candidatesByDate = mutableMapOf<LocalDate, List<Event>>()
+
+        val groups = events.mapNotNull { event ->
+            val eventStart = event.eventStartDateTimeOrNull() ?: return@mapNotNull null
+            val eventDate = eventStart.toLocalDate()
+            val candidates = selectPotentialDuplicateCandidates(
+                event = event,
+                eventStart = eventStart,
+                candidates = candidatesByDate.getOrPut(eventDate) {
+                    val dayStart = eventDate.atStartOfDay()
+                    repository.findExtraSnuEventsStartingOn(dayStart, dayStart.plusDays(1))
+                },
+            )
+            candidates.takeIf { it.isNotEmpty() }?.let { DuplicateCandidateGroup(event, it) }
+        }
+        val duplicateIds = eliceEventParserClient.findHighConfidenceDuplicates(groups)
+        if (duplicateIds.isEmpty()) return DuplicateFilterResult(events, skipped = 0)
+
+        duplicateIds.forEach { (eventKey, duplicateId) ->
+            println("[AI_DUPLICATE] skipped event=$eventKey duplicateOfEventId=$duplicateId")
+        }
+        val filtered = events.filterNot { duplicateIds.containsKey(it.parserKey()) }
+        return DuplicateFilterResult(filtered, skipped = events.size - filtered.size)
+    }
+
     private fun filterEventsWithParsedDetail(
         events: List<CrawledProgramEvent>,
         source: String,
@@ -306,6 +345,67 @@ private data class ExistingFilterResult<T>(
     val items: List<T>,
     val skipped: Int,
 )
+
+private data class DuplicateFilterResult(
+    val events: List<CrawledProgramEvent>,
+    val skipped: Int,
+)
+
+internal fun selectPotentialDuplicateCandidates(
+    event: CrawledProgramEvent,
+    eventStart: LocalDateTime,
+    candidates: List<Event>,
+): List<Event> =
+    candidates.asSequence()
+        .map { candidate ->
+            val titleSimilarity = bigramJaccard(event.title.orEmpty(), candidate.title)
+            val minimumSimilarity = if (candidate.eventStart == eventStart) {
+                MIN_TITLE_SIMILARITY_SAME_START
+            } else {
+                MIN_TITLE_SIMILARITY_SAME_DAY
+            }
+            Triple(candidate, titleSimilarity, minimumSimilarity)
+        }
+        .filter { (_, titleSimilarity, minimumSimilarity) -> titleSimilarity >= minimumSimilarity }
+        .sortedByDescending { (_, titleSimilarity) -> titleSimilarity }
+        .take(MAX_DUPLICATE_CANDIDATES)
+        .map { (candidate) -> candidate }
+        .toList()
+
+private fun CrawledProgramEvent.eventStartDateTimeOrNull(): LocalDateTime? =
+    detailSessions.mapNotNull { session ->
+        val date = session.startDate.toLocalDateOrNull() ?: return@mapNotNull null
+        val time = session.startTime
+            ?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
+            ?: LocalTime.MIN
+        date.atTime(time)
+    }.minOrNull() ?: activityStart.toLocalDateOrNull()?.atStartOfDay()
+
+private fun bigramJaccard(left: String, right: String): Double {
+    val leftBigrams = left.normalizedForDuplicateCheck().bigrams()
+    val rightBigrams = right.normalizedForDuplicateCheck().bigrams()
+    if (leftBigrams.isEmpty() || rightBigrams.isEmpty()) return 0.0
+    return leftBigrams.intersect(rightBigrams).size.toDouble() / leftBigrams.union(rightBigrams).size
+}
+
+private fun String.normalizedForDuplicateCheck(): String =
+    lowercase()
+        .replace(DUPLICATE_DATE_REGEX, " ")
+        .replace(DUPLICATE_ORDINAL_REGEX, " ")
+        .replace(DUPLICATE_RECRUITMENT_PREFIX_REGEX, " ")
+        .replace(DUPLICATE_GENERIC_WORD_REGEX, " ")
+        .filter { it.isLetterOrDigit() }
+
+private fun String.bigrams(): Set<String> =
+    if (length < 2) emptySet() else windowed(size = 2, step = 1).toSet()
+
+private const val MIN_TITLE_SIMILARITY_SAME_START = 0.16
+private const val MIN_TITLE_SIMILARITY_SAME_DAY = 0.58
+private const val MAX_DUPLICATE_CANDIDATES = 3
+private val DUPLICATE_DATE_REGEX = Regex("""20\d{2}[.년/-]?\s*\d{0,2}[.월/-]?\s*\d{0,2}[.일]?""")
+private val DUPLICATE_ORDINAL_REGEX = Regex("""\b\d{1,2}(?:st|nd|rd|th)\b""")
+private val DUPLICATE_RECRUITMENT_PREFIX_REGEX = Regex("""\[(?:참가자|수강생)?\s*모집]""")
+private val DUPLICATE_GENERIC_WORD_REGEX = Regex("""서울대학교|행사|개최|안내|모집""")
 
 private data class BatchArgs(
     val startPage: Int = 1,
