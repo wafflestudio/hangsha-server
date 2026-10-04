@@ -14,6 +14,23 @@ interface EventRepository : CrudRepository<Event, Long> {
         """
     select *
     from events
+    where admin_deleted = false
+      and apply_link like 'https://extra.snu.ac.kr/%'
+      and event_start >= :dayStart
+      and event_start < :nextDayStart
+    order by event_start, id desc
+    limit 30
+    """
+    )
+    fun findExtraSnuEventsStartingOn(
+        @Param("dayStart") dayStart: LocalDateTime,
+        @Param("nextDayStart") nextDayStart: LocalDateTime,
+    ): List<Event>
+
+    @Query(
+        """
+    select *
+    from events
     where apply_link = :applyLink
       and COALESCE(event_start, apply_start) = :keyStart
       and COALESCE(event_end,   apply_end)   = :keyEnd

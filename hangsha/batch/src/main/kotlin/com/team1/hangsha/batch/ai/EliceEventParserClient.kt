@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
+import com.team1.hangsha.event.model.Event
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -79,6 +80,46 @@ class EliceEventParserClient(
         }
     }
 
+    fun findHighConfidenceDuplicates(groups: List<DuplicateCandidateGroup>): Map<String, Long> {
+        if (!isConfigured() || groups.isEmpty()) return emptyMap()
+
+        return runCatching {
+            val payload = buildDuplicatePayload(groups)
+            val requestBody = objectMapper.writeValueAsString(payload).toRequestBody(JSON)
+            val request = Request.Builder()
+                .url(chatCompletionsUrl())
+                .post(requestBody)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer $apiKey")
+                .build()
+
+            val decisions = client.newCall(request).execute().use { response ->
+                val responseText = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        "Elice ML API duplicate check failed. code=${response.code} body=${responseText.take(500)}"
+                    )
+                }
+                parseDuplicateResponseText(responseText)
+            }
+
+            val candidateIdsByEvent = groups.associate { group ->
+                group.event.parserKey() to group.candidates.mapNotNull { it.id }.toSet()
+            }
+            decisions.mapNotNull { decision ->
+                val duplicateId = decision.duplicateOfEventId ?: return@mapNotNull null
+                val validIds = candidateIdsByEvent[decision.id].orEmpty()
+                if (decision.confidence.equals("high", ignoreCase = true) && duplicateId in validIds) {
+                    decision.id to duplicateId
+                } else {
+                    null
+                }
+            }.toMap()
+        }.onFailure { e ->
+            println("[AI_DUPLICATE] failed open: ${e::class.simpleName} ${e.message}")
+        }.getOrDefault(emptyMap())
+    }
+
     private fun isConfigured(): Boolean =
         enabled && url.isNotBlank() && model.isNotBlank() && apiKey.isNotBlank()
 
@@ -127,6 +168,24 @@ class EliceEventParserClient(
             "response_format" to RESPONSE_FORMAT,
         )
 
+    private fun buildDuplicatePayload(groups: List<DuplicateCandidateGroup>): Map<String, Any?> =
+        mapOf(
+            "model" to model,
+            "messages" to listOf(
+                mapOf("role" to "system", "content" to DUPLICATE_SYSTEM_PROMPT),
+                mapOf(
+                    "role" to "user",
+                    "content" to objectMapper.writeValueAsString(
+                        mapOf("items" to groups.map { it.toDuplicatePromptItem() })
+                    ),
+                ),
+            ),
+            "max_completion_tokens" to maxCompletionTokens.coerceAtMost(2048),
+            "reasoning_effort" to reasoningEffort,
+            "stream" to false,
+            "response_format" to DUPLICATE_RESPONSE_FORMAT,
+        )
+
     private fun chatCompletionsUrl(): String {
         val configuredUrl = url.trim().trimEnd('/')
         return when {
@@ -149,6 +208,14 @@ class EliceEventParserClient(
         }
 
         return objectMapper.convertValue(itemsNode, object : TypeReference<List<ParsedEvent>>() {})
+    }
+
+    private fun parseDuplicateResponseText(text: String): List<DuplicateDecision> {
+        val content = extractModelContent(text)
+        val root = objectMapper.readTree(extractJson(content))
+        val itemsNode = root.get("items")
+            ?: throw IllegalArgumentException("AI duplicate response JSON must contain items")
+        return objectMapper.convertValue(itemsNode, object : TypeReference<List<DuplicateDecision>>() {})
     }
 
     private fun extractModelContent(text: String): String {
@@ -264,6 +331,37 @@ class EliceEventParserClient(
                 ),
             ),
         )
+        private val DUPLICATE_RESPONSE_FORMAT = mapOf(
+            "type" to "json_schema",
+            "json_schema" to mapOf(
+                "name" to "duplicate_events",
+                "strict" to true,
+                "schema" to mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "items" to mapOf(
+                            "type" to "array",
+                            "items" to mapOf(
+                                "type" to "object",
+                                "properties" to mapOf(
+                                    "id" to mapOf("type" to "string"),
+                                    "duplicateOfEventId" to mapOf("type" to listOf("integer", "null")),
+                                    "confidence" to mapOf(
+                                        "type" to "string",
+                                        "enum" to listOf("high", "medium", "low"),
+                                    ),
+                                    "reason" to mapOf("type" to "string"),
+                                ),
+                                "required" to listOf("id", "duplicateOfEventId", "confidence", "reason"),
+                                "additionalProperties" to false,
+                            ),
+                        ),
+                    ),
+                    "required" to listOf("items"),
+                    "additionalProperties" to false,
+                ),
+            ),
+        )
 
         private const val SYSTEM_PROMPT = """
 당신은 서울대학교 행사 공지를 구조화된 데이터로 변환하는 의미 분석기입니다.
@@ -312,7 +410,76 @@ class EliceEventParserClient(
 분류는 단어의 일치보다 행사의 의미와 목적을 기준으로 가장 가까운 값을 고르세요. 합리적으로 맞는 분류가 없을 때만 "기타"를 사용하세요.
 장소는 확정된 행사장, 건물, 호실 또는 온라인 주소만 반환하세요. 미정이거나 선택 사항이거나 참가자가 정하는 장소이면 null을 반환하세요.
 """
+        private const val DUPLICATE_SYSTEM_PROMPT = """
+당신은 서로 다른 서울대학교 행사 출처에 올라온 공지가 같은 실제 행사를 가리키는지 판정합니다.
+입력의 currentEvent 각각에 대해 candidates 중 같은 행사인 기존 eventId 하나를 고르거나 null을 반환하세요.
+
+제목, 행사 일시, 주최 기관, 본문을 함께 비교하세요. 같은 일시만으로는 중복으로 판정하지 마세요.
+정기 세미나의 서로 다른 회차, 같은 프로그램의 서로 다른 기수, 같은 날 열리는 별도 행사는 중복이 아닙니다.
+표현만 다르고 핵심 주제·연사·회차·일시가 일치하는 등 근거가 충분할 때만 confidence를 high로 반환하세요.
+조금이라도 불확실하면 medium 또는 low와 duplicateOfEventId null을 반환하세요.
+입력마다 정확히 하나의 결과를 만들고 입력 id를 그대로 유지하세요. 마크다운이나 설명 없이 JSON만 반환하세요.
+"""
     }
+}
+
+data class DuplicateCandidateGroup(
+    val event: CrawledProgramEvent,
+    val candidates: List<Event>,
+)
+
+private data class DuplicateDecision(
+    val id: String,
+    val duplicateOfEventId: Long? = null,
+    val confidence: String,
+    val reason: String,
+)
+
+private data class DuplicatePromptItem(
+    val id: String,
+    val currentEvent: DuplicatePromptEvent,
+    val candidates: List<DuplicatePromptEvent>,
+)
+
+private data class DuplicatePromptEvent(
+    val eventId: Long? = null,
+    val title: String?,
+    val eventStart: String?,
+    val eventEnd: String?,
+    val organization: String?,
+    val content: String?,
+)
+
+private fun DuplicateCandidateGroup.toDuplicatePromptItem(): DuplicatePromptItem =
+    DuplicatePromptItem(
+        id = event.parserKey(),
+        currentEvent = DuplicatePromptEvent(
+            title = event.title,
+            eventStart = event.detailSessions.mapNotNull { it.startDateTimeText() }.minOrNull() ?: event.activityStart,
+            eventEnd = event.detailSessions.mapNotNull { it.endDateTimeText() }.maxOrNull() ?: event.activityEnd,
+            organization = event.majorTypes.firstOrNull(),
+            content = event.mainContentHtml.toPlainText().take(MAX_DUPLICATE_CURRENT_CONTENT_CHARS),
+        ),
+        candidates = candidates.map { candidate ->
+            DuplicatePromptEvent(
+                eventId = candidate.id,
+                title = candidate.title,
+                eventStart = candidate.eventStart?.toString(),
+                eventEnd = candidate.eventEnd?.toString(),
+                organization = candidate.organization,
+                content = candidate.mainContentHtml.toPlainText().take(MAX_DUPLICATE_CANDIDATE_CONTENT_CHARS),
+            )
+        },
+    )
+
+private fun CrawledDetailSession.startDateTimeText(): String? {
+    val date = startDate ?: return null
+    return listOfNotNull(date, startTime).joinToString("T")
+}
+
+private fun CrawledDetailSession.endDateTimeText(): String? {
+    val date = endDate ?: startDate ?: return null
+    return listOfNotNull(date, endTime).joinToString("T")
 }
 
 private data class PromptEvent(
@@ -763,3 +930,5 @@ private val PROGRAM_TYPES = setOf(
 
 private val HH_MM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private const val MAX_CONTENT_CHARS = 6000
+private const val MAX_DUPLICATE_CURRENT_CONTENT_CHARS = 3000
+private const val MAX_DUPLICATE_CANDIDATE_CONTENT_CHARS = 1500
