@@ -20,22 +20,25 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 @Component
-class EliceEventParserClient(
+class GeminiEventParserClient(
     private val objectMapper: ObjectMapper,
-    @Value("\${elice.ml-api.event-parser.enabled:false}")
+    @Value("\${gemini.event-parser.enabled:false}")
     private val enabled: Boolean,
-    @Value("\${elice.ml-api.event-parser.url:https://mlapi.run/286e9158-d32e-436d-a23d-36b43fc8e68a/v1/chat/completions}")
+    @Value("\${gemini.event-parser.url:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}")
     private val url: String,
-    @Value("\${elice.ml-api.event-parser.model:gpt-5.6-luna}")
+    @Value("\${gemini.event-parser.model:gemini-3.5-flash-lite}")
     private val model: String,
-    @Value("\${elice.ml-api.event-parser.api-key:}")
+    @Value("\${gemini.event-parser.api-key:\${GEMINI_API_KEY:}}")
     private val apiKey: String,
-    @Value("\${elice.ml-api.event-parser.max-completion-tokens:4096}")
+    @Value("\${gemini.event-parser.max-completion-tokens:4096}")
     private val maxCompletionTokens: Int,
-    @Value("\${elice.ml-api.event-parser.reasoning-effort:low}")
+    @Value("\${gemini.event-parser.reasoning-effort:low}")
     private val reasoningEffort: String,
+    @Value("\${gemini.event-parser.request-interval-ms:4500}")
+    private val requestIntervalMs: Long = 4500,
 ) {
     private var configurationWarningLogged = false
+    private var lastRequestNanos: Long? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -92,15 +95,28 @@ class EliceEventParserClient(
             .header("Authorization", "Bearer $apiKey")
             .build()
 
-        client.newCall(request).execute().use { response ->
-            val responseText = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Elice ML API failed. code=${response.code} body=${responseText.take(500)}")
+        repeat(3) { attempt ->
+            lastRequestNanos?.let { last ->
+                val waitMs = requestIntervalMs - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - last)
+                if (waitMs > 0) Thread.sleep(waitMs)
             }
+            lastRequestNanos = System.nanoTime()
+            client.newCall(request).execute().use { response ->
+                val responseText = response.body?.string().orEmpty()
+                if (response.code in listOf(429, 503) && attempt < 2) {
+                    val retryMs = response.header("Retry-After")?.toLongOrNull()?.coerceIn(0, 120)?.times(1000)
+                        ?: (10_000L * (attempt + 1))
+                    Thread.sleep(retryMs)
+                    return@repeat
+                }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Gemini API failed. code=${response.code} body=${responseText.take(500)}")
+                }
 
-            return parseResponseText(responseText)
-                .associateBy { it.id }
+                return parseResponseText(responseText).associateBy { it.id }
+            }
         }
+        error("Gemini API retries exhausted")
     }
 
     private fun buildPayload(events: List<CrawledProgramEvent>): Map<String, Any?> =
@@ -131,8 +147,7 @@ class EliceEventParserClient(
         val configuredUrl = url.trim().trimEnd('/')
         return when {
             configuredUrl.endsWith("/chat/completions") -> configuredUrl
-            configuredUrl.endsWith("/v1") -> "$configuredUrl/chat/completions"
-            else -> "$configuredUrl/v1/chat/completions"
+            else -> "$configuredUrl/chat/completions"
         }
     }
 
