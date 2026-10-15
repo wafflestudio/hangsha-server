@@ -14,3 +14,17 @@ spring:
     time-zone: Asia/Seoul
 
 test:
+
+gemini:
+  event-parser:
+    enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+gemini:
+  event-parser:
+    enabled: true
