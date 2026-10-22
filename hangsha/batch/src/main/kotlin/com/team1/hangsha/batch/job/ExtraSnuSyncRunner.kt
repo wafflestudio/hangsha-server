@@ -197,7 +197,14 @@ class ExtraSnuSyncRunner(
                     continue
                 }
 
-                val result = eventSyncService().sync(parsedSnuNowEvents)
+                val duplicateFilter = if (opt.aiParser) {
+                    filterCrossSourceDuplicates(parsedSnuNowEvents)
+                } else {
+                    DuplicateFilterResult(parsedSnuNowEvents, skipped = 0)
+                }
+                totalSkipped += duplicateFilter.skipped
+
+                val result = eventSyncService().sync(duplicateFilter.events)
                 totalUpserted += result.upserted
                 totalSkipped += result.skipped
 
@@ -269,6 +276,13 @@ class ExtraSnuSyncRunner(
         batchSize: Int,
     ): List<CrawledProgramEvent> {
         return geminiEventParserClient.enrich(events, batchSize)
+    }
+
+    private fun filterCrossSourceDuplicates(events: List<CrawledProgramEvent>): DuplicateFilterResult {
+        val repository = eventRepositoryProvider.getIfAvailable()
+            ?: return DuplicateFilterResult(events, skipped = 0)
+        return CrossSourceDuplicateFilter(repository, geminiEventParserClient::findHighConfidenceDuplicates)
+            .filter(events)
     }
 
     private fun filterEventsWithParsedDetail(
