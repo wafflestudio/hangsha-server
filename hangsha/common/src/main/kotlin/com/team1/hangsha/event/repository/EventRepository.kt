@@ -19,7 +19,6 @@ interface EventRepository : CrudRepository<Event, Long> {
       and event_start >= :dayStart
       and event_start < :nextDayStart
     order by event_start, id desc
-    limit 30
     """
     )
     fun findExtraSnuEventsStartingOn(

@@ -104,7 +104,7 @@ class EliceEventParserClient(
             }
 
             val candidateIdsByEvent = groups.associate { group ->
-                group.event.parserKey() to group.candidates.mapNotNull { it.id }.toSet()
+                group.id to group.candidates.mapNotNull { it.id }.toSet()
             }
             decisions.mapNotNull { decision ->
                 val duplicateId = decision.duplicateOfEventId ?: return@mapNotNull null
@@ -413,6 +413,7 @@ class EliceEventParserClient(
         private const val DUPLICATE_SYSTEM_PROMPT = """
 당신은 서로 다른 서울대학교 행사 출처에 올라온 공지가 같은 실제 행사를 가리키는지 판정합니다.
 입력의 currentEvent 각각에 대해 candidates 중 같은 행사인 기존 eventId 하나를 고르거나 null을 반환하세요.
+currentEvent는 공지 전체가 아닌 하나의 회차입니다. 본문에 다른 회차가 있어도 입력에 명시된 회차와 일시만 비교하세요.
 
 제목, 행사 일시, 주최 기관, 본문을 함께 비교하세요. 같은 일시만으로는 중복으로 판정하지 마세요.
 정기 세미나의 서로 다른 회차, 같은 프로그램의 서로 다른 기수, 같은 날 열리는 별도 행사는 중복이 아닙니다.
@@ -424,6 +425,7 @@ class EliceEventParserClient(
 }
 
 data class DuplicateCandidateGroup(
+    val id: String,
     val event: CrawledProgramEvent,
     val candidates: List<Event>,
 )
@@ -443,6 +445,7 @@ private data class DuplicatePromptItem(
 
 private data class DuplicatePromptEvent(
     val eventId: Long? = null,
+    val round: Int? = null,
     val title: String?,
     val eventStart: String?,
     val eventEnd: String?,
@@ -452,8 +455,9 @@ private data class DuplicatePromptEvent(
 
 private fun DuplicateCandidateGroup.toDuplicatePromptItem(): DuplicatePromptItem =
     DuplicatePromptItem(
-        id = event.parserKey(),
+        id = id,
         currentEvent = DuplicatePromptEvent(
+            round = event.detailSessions.singleOrNull()?.round,
             title = event.title,
             eventStart = event.detailSessions.mapNotNull { it.startDateTimeText() }.minOrNull() ?: event.activityStart,
             eventEnd = event.detailSessions.mapNotNull { it.endDateTimeText() }.maxOrNull() ?: event.activityEnd,
