@@ -1,7 +1,7 @@
 package com.team1.hangsha.batch.job
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.team1.hangsha.batch.ai.EliceEventParserClient
+import com.team1.hangsha.batch.ai.GeminiEventParserClient
 import com.team1.hangsha.batch.crawler.DetailSession
 import com.team1.hangsha.batch.crawler.ExtraSnuCrawler
 import com.team1.hangsha.batch.crawler.ProgramEvent
@@ -37,7 +37,7 @@ class ExtraSnuSyncRunner(
     private val eventRepositoryProvider: ObjectProvider<EventRepository>,
     private val crawlReviewServiceProvider: ObjectProvider<CrawlReviewService>,
     private val ociUploadService: OciUploadService,
-    private val eliceEventParserClient: EliceEventParserClient,
+    private val geminiEventParserClient: GeminiEventParserClient,
     private val objectMapper: ObjectMapper,
 ) : ApplicationRunner {
 
@@ -275,13 +275,13 @@ class ExtraSnuSyncRunner(
         events: List<CrawledProgramEvent>,
         batchSize: Int,
     ): List<CrawledProgramEvent> {
-        return eliceEventParserClient.enrich(events, batchSize)
+        return geminiEventParserClient.enrich(events, batchSize)
     }
 
     private fun filterCrossSourceDuplicates(events: List<CrawledProgramEvent>): DuplicateFilterResult {
         val repository = eventRepositoryProvider.getIfAvailable()
             ?: return DuplicateFilterResult(events, skipped = 0)
-        return CrossSourceDuplicateFilter(repository, eliceEventParserClient::findHighConfidenceDuplicates)
+        return CrossSourceDuplicateFilter(repository, geminiEventParserClient::findHighConfidenceDuplicates)
             .filter(events)
     }
 

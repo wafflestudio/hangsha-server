@@ -1,6 +1,5 @@
 package com.team1.hangsha.batch.job
 
-import com.team1.hangsha.batch.ai.DuplicateCandidateGroup
 import com.team1.hangsha.event.dto.core.CrawledDetailSession
 import com.team1.hangsha.event.dto.core.CrawledProgramEvent
 import com.team1.hangsha.event.model.Event
@@ -88,6 +87,16 @@ class CrossSourceDuplicateFilterTest {
         }
 
         assertEquals(listOf(single), filter.filter(listOf(single)).events)
+    }
+
+    @Test
+    fun `one stored session cannot remove two input sessions on the same day`() {
+        candidatesOn(firstStart, listOf(candidate(1, firstStart)))
+        val later = first.copy(round = 2, startTime = "15:00", endTime = "16:00")
+        val sameDayProgram = event.copy(detailSessions = listOf(first, later))
+        val filter = CrossSourceDuplicateFilter(repository) { groups -> groups.associate { it.id to 1L } }
+
+        assertEquals(listOf(sameDayProgram), filter.filter(listOf(sameDayProgram)).events)
     }
 
     @Test

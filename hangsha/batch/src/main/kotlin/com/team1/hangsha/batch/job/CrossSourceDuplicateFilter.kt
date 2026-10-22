@@ -51,10 +51,16 @@ internal class CrossSourceDuplicateFilter(
         if (duplicates.isEmpty()) return DuplicateFilterResult(events, skipped = 0)
 
         val filtered = events.mapIndexedNotNull { eventIndex, event ->
+            val candidateUseCounts = event.detailSessions.indices.mapNotNull { sessionIndex ->
+                duplicates[sessionKey(eventIndex, sessionIndex)]
+            }.groupingBy { it }.eachCount()
             val remaining = event.detailSessions.filterIndexed { sessionIndex, _ ->
                 val key = sessionKey(eventIndex, sessionIndex)
-                duplicates[key]?.let { println("[AI_DUPLICATE] skipped session=$key duplicateOfEventId=$it") }
-                key !in duplicates
+                val candidateId = duplicates[key]
+                // One stored session cannot prove that two different input sessions both exist.
+                val duplicate = candidateId != null && candidateUseCounts[candidateId] == 1
+                if (duplicate) println("[AI_DUPLICATE] skipped session=$key duplicateOfEventId=$candidateId")
+                !duplicate
             }
             when {
                 remaining.size == event.detailSessions.size -> event
