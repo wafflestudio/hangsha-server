@@ -1,5 +1,6 @@
 package com.team1.hangsha.helper
 
+import com.team1.hangsha.appversion.repository.AppVersionRepository
 import com.team1.hangsha.category.model.Organization
 import com.team1.hangsha.common.enums.CourseSource
 import com.team1.hangsha.common.enums.DayOfWeek
@@ -53,6 +54,8 @@ class DataGenerator(
     private val courseRepository: CourseRepository,
     private val courseTimeSlotRepository: CourseTimeSlotRepository,
     private val enrollRepository: EnrollRepository,
+
+    private val appVersionRepository: AppVersionRepository,
 ) {
     companion object {
         private val seq = AtomicLong(1L)
@@ -373,5 +376,7 @@ class DataGenerator(
 
         userIdentityRepository.deleteAll()
         userRepository.deleteAll()
+
+        appVersionRepository.deleteAll()
     }
 }
