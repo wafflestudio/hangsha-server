@@ -1,31 +1,33 @@
 package com.team1.hangsha.helper
 
-import com.team1.hangsha.board.repository.BoardPostRepository
-import com.team1.hangsha.board.repository.BoardRelationsRepository
 import com.team1.hangsha.category.model.Organization
-import com.team1.hangsha.category.repository.OrganizationRepository
 import com.team1.hangsha.common.enums.CourseSource
 import com.team1.hangsha.common.enums.DayOfWeek
 import com.team1.hangsha.common.enums.Semester
 import com.team1.hangsha.course.model.Course
 import com.team1.hangsha.course.model.CourseTimeSlot
-import com.team1.hangsha.course.repository.CourseRepository
-import com.team1.hangsha.course.repository.CourseTimeSlotRepository
 import com.team1.hangsha.event.model.Event
-import com.team1.hangsha.event.repository.EventRepository
 import com.team1.hangsha.memo.model.Memo
 import com.team1.hangsha.memo.model.MemoTagRef
-import com.team1.hangsha.memo.repository.MemoRepository
 import com.team1.hangsha.tag.model.Tag
-import com.team1.hangsha.tag.repository.TagRepository
 import com.team1.hangsha.timetable.model.Enroll
 import com.team1.hangsha.timetable.model.Timetable
+import com.team1.hangsha.user.JwtTokenProvider
+import com.team1.hangsha.user.model.AuthProvider
+import com.team1.hangsha.user.model.AuthTokenPair
+import com.team1.hangsha.user.model.User
+import com.team1.hangsha.user.model.UserIdentity
+import com.team1.hangsha.category.repository.OrganizationRepository
+import com.team1.hangsha.course.repository.CourseRepository
+import com.team1.hangsha.course.repository.CourseTimeSlotRepository
+import com.team1.hangsha.event.repository.EventRepository
+import com.team1.hangsha.memo.repository.MemoRepository
+import com.team1.hangsha.tag.repository.TagRepository
 import com.team1.hangsha.timetable.repository.EnrollRepository
 import com.team1.hangsha.timetable.repository.TimetableRepository
-import com.team1.hangsha.user.JwtTokenProvider
-import com.team1.hangsha.user.model.*
 import com.team1.hangsha.user.repository.UserIdentityRepository
 import com.team1.hangsha.user.repository.UserInterestDomainRepository
+import com.team1.hangsha.user.model.InterestCategoryType
 import com.team1.hangsha.user.repository.UserRepository
 import org.mindrot.jbcrypt.BCrypt
 import org.springframework.stereotype.Component
@@ -36,8 +38,6 @@ import kotlin.random.Random
 @Component
 class DataGenerator(
     private val userRepository: UserRepository,
-    private val boardPostRepository: BoardPostRepository,
-    private val boardRelationsRepository: BoardRelationsRepository,
     private val userIdentityRepository: UserIdentityRepository,
     private val userInterestDomainRepository: UserInterestDomainRepository,
     private val jwtTokenProvider: JwtTokenProvider,
@@ -357,10 +357,6 @@ class DataGenerator(
     // ----------------------------
 
     fun cleanupAll() {
-        boardPostRepository.findAll().forEach { post ->
-            boardRelationsRepository.deletePostChildren(post.id!!)
-            boardPostRepository.deleteById(post.id)
-        }
         // 자식 -> 부모 순서
         enrollRepository.deleteAll()
         courseTimeSlotRepository.deleteAll()

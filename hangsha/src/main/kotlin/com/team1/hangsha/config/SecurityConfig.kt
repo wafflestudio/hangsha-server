@@ -84,7 +84,6 @@ class SecurityConfig(
                         "/login/oauth2/code/**",
                         "/error",
                     ).permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/board/posts", "/api/v1/board/posts/{postId}", "/api/v1/board/posts/{postId}/comments").permitAll()
                     // 버그 리포트 등록 (비로그인 사용자도 제출 가능, 조회 계열은 계속 인증 필요)
                     .requestMatchers(HttpMethod.POST, "/api/v1/bug-reports").permitAll()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

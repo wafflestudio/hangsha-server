@@ -1,18 +1,21 @@
 package com.team1.hangsha.event.controller
 
-import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
+import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
+import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
 import com.team1.hangsha.event.dto.response.EventCountResponse
-import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.service.EventService
 import com.team1.hangsha.user.LoggedInUser
 import com.team1.hangsha.user.model.User
-import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.format.annotation.DateTimeFormat.ISO
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
 
 @RestController
@@ -20,20 +23,6 @@ import java.time.LocalDate
 class EventController(
     private val eventService: EventService,
 ) {
-
-    @GetMapping("/discussed")
-    @Operation(
-        summary = "이야기가 많은 행사",
-        description = "공개 조회. 연결 글 개수 DESC/행사 ID DESC. 종료 행사 포함, 글 없는 행사 제외. size 기본 5, 1~100."
-    )
-    fun discussed(@RequestParam(defaultValue = "5") size: Int) = eventService.discussed(size)
-
-    @GetMapping("/upcoming")
-    @Operation(
-        summary = "신청 마감 임박 행사",
-        description = "공개 조회. Asia/Seoul 기준 applyEnd > now, applyStart가 없거나 <= now. 마감 ASC/ID ASC. 숨김·마감 미정·신청 시작 전 제외. size 기본 5, 1~100. applyEnd는 offset 없는 한국 시각, D-day는 프론트에서 계산."
-    )
-    fun upcoming(@RequestParam(defaultValue = "5") size: Int) = eventService.upcoming(size)
 
     @GetMapping("/month")
     fun month(
