@@ -7,6 +7,7 @@ import com.team1.hangsha.board.dto.core.PostDetailResponse
 import com.team1.hangsha.board.repository.BoardQueryRepository
 import com.team1.hangsha.board.service.BoardCommentService
 import com.team1.hangsha.board.service.BoardPostService
+import com.team1.hangsha.board.service.BoardPolicy
 import com.team1.hangsha.bookmark.service.BookmarkService
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
@@ -148,11 +149,11 @@ class BoardIntegrationTest : IntegrationTestBase() {
     @Test
     fun `익명 댓글 - 글쓴이는 별도 표시하고 다른 참여자의 번호는 삭제 후에도 유지한다`() {
         val p = post(true)
-        assertEquals("익명", p.author.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME, p.author.displayName)
         assertEquals(0L, count("board_anonymous_users"))
         jdbc.update("UPDATE users SET username = '실명작성자' WHERE id = :id", mapOf("id" to author))
         val anonymousPostComment = comment(p.id, author, true)
-        assertEquals("익명(글쓴이)", anonymousPostComment.author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME, anonymousPostComment.author!!.displayName)
         assertTrue(anonymousPostComment.isPostAuthor)
         assertTrue(anonymousPostComment.isAnonymous)
         assertEquals(0L, count("board_anonymous_users"))
@@ -160,23 +161,23 @@ class BoardIntegrationTest : IntegrationTestBase() {
         assertEquals("실명작성자", realPostComment.author!!.displayName)
         assertTrue(realPostComment.isPostAuthor)
         val c = comment(p.id, anonymous = true)
-        assertEquals("익명1", c.author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 1, c.author!!.displayName)
         comments.delete(other, c.id)
         val nextUser = users.save(User(username = "새 사용자")).id!!
-        assertEquals("익명2", comment(p.id, nextUser, true).author!!.displayName)
-        assertEquals("익명1", comment(p.id, anonymous = true).author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 2, comment(p.id, nextUser, true).author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 1, comment(p.id, anonymous = true).author!!.displayName)
         posts.update(author, p.id, body("""{"isAnonymous":false}"""))
         assertEquals("실명작성자", posts.detail(p.id, null).author.displayName)
-        assertEquals("익명", posts.update(author, p.id, body("""{"isAnonymous":true}""")).author.displayName)
-        assertEquals("익명1", comment(post().id, anonymous = true).author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME, posts.update(author, p.id, body("""{"isAnonymous":true}""")).author.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 1, comment(post().id, anonymous = true).author!!.displayName)
         posts.update(author, p.id, body("""{"isAnonymous":false}"""))
-        assertEquals("익명(글쓴이)", query.comment(anonymousPostComment.id, null)!!.author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME, query.comment(anonymousPostComment.id, null)!!.author!!.displayName)
         comments.delete(author, anonymousPostComment.id)
-        assertEquals("익명(글쓴이)", comment(p.id, author, true).author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME, comment(p.id, author, true).author!!.displayName)
         assertEquals(3L, count("board_anonymous_users"))
         val listed = comments.list(p.id, null, "recommended", 1, 20)
         assertTrue(listed.items.filter { it.isPostAuthor && it.isAnonymous }
-            .all { it.author!!.displayName == "익명(글쓴이)" })
+            .all { it.author!!.displayName == BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME })
     }
 
     @Test
@@ -204,7 +205,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
         assertEquals(1L, list.totalRoots)
         assertEquals(1L, list.totalComments)
         val deleted = list.items.single()
-        assertEquals("(삭제)", deleted.content)
+        assertEquals(BoardPolicy.DELETED_COMMENT_CONTENT, deleted.content)
         assertNull(deleted.author)
         assertFalse(deleted.isAnonymous)
         assertFalse(deleted.isPostAuthor)
@@ -465,7 +466,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
             }
         })
         val labels = comments.list(p.id, null, "latest", 1, 20).items.map { it.author!!.displayName }.toSet()
-        assertEquals((1..6).map { "익명$it" }.toSet(), labels)
+        assertEquals((1..6).map { BoardPolicy.ANONYMOUS_AUTHOR_NAME + it }.toSet(), labels)
         concurrently((1..4).map {
             {
                 comment(p.id, participants.first(), true); posts.like(
@@ -513,7 +514,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
         )
             .andExpect(status().isOk).andExpect(jsonPath("$.content").value("a"))
             .andExpect(jsonPath("$.isMine").value(true))
-            .andExpect(jsonPath("$.author.displayName").value("익명"))
+            .andExpect(jsonPath("$.author.displayName").value(BoardPolicy.ANONYMOUS_AUTHOR_NAME))
             .andExpect(jsonPath("$.createdAt").isString).andExpect(jsonPath("$.updatedAt").isString)
             .andReturn()
         val result = objectMapper.readTree(response.response.contentAsString)
@@ -545,7 +546,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
                 .contentType("application/json").content("""{"content":"a","isAnonymous":true}""")
         )
             .andExpect(status().isOk).andExpect(jsonPath("$.isPostAuthor").value(true))
-            .andExpect(jsonPath("$.author.displayName").value("익명(글쓴이)"))
+            .andExpect(jsonPath("$.author.displayName").value(BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME))
             .andExpect(jsonPath("$.createdAt").isString).andReturn()
         assertNotNull(Instant.parse(objectMapper.readTree(response.response.contentAsString)["createdAt"].asText()))
     }
@@ -586,7 +587,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
     fun `GET board - 비로그인도 조회 가능하고 목록에는 본문과 작성자 개인정보를 포함하지 않는다`() {
         val p = post(true)
         mockMvc.perform(get("/api/v1/board/posts")).andExpect(status().isOk)
-            .andExpect(jsonPath("$.items[0].author.displayName").value("익명"))
+            .andExpect(jsonPath("$.items[0].author.displayName").value(BoardPolicy.ANONYMOUS_AUTHOR_NAME))
             .andExpect(jsonPath("$.items[0].content").doesNotExist())
             .andExpect(jsonPath("$.items[0].author.username").doesNotExist())
         mockMvc.perform(get("/api/v1/board/posts/${p.id}")).andExpect(status().isOk)
@@ -727,14 +728,14 @@ class BoardIntegrationTest : IntegrationTestBase() {
             val detail = posts.detail(original.id, null)
             assertEquals(original.content, detail.content)
             assertEquals(original.tagNames, detail.tagNames)
-            assertEquals("(탈퇴됨)", detail.author.displayName)
+            assertEquals(BoardPolicy.WITHDRAWN_AUTHOR_NAME, detail.author.displayName)
             assertFalse(detail.isMine)
             assertTrue(posts.list(null, null, null, false, 1, 20).items.any { it.id == original.id })
         }
         listOf(root, anonymousRoot).forEach { original ->
             val actual = query.comment(original.id, null)!!
             assertEquals(original.content, actual.content)
-            assertEquals("(탈퇴됨)", actual.author!!.displayName)
+            assertEquals(BoardPolicy.WITHDRAWN_AUTHOR_NAME, actual.author!!.displayName)
             assertFalse(actual.isPostAuthor)
             assertFalse(actual.isMine)
         }
@@ -747,7 +748,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
         assertEquals(reply.id, listed.items.single().replies.single().id)
         assertEquals("다른 사람", listed.items.single().replies.single().author!!.displayName)
         mockMvc.perform(get("/api/v1/board/posts/${realPost.id}"))
-            .andExpect(status().isOk).andExpect(jsonPath("$.author.displayName").value("(탈퇴됨)"))
+            .andExpect(status().isOk).andExpect(jsonPath("$.author.displayName").value(BoardPolicy.WITHDRAWN_AUTHOR_NAME))
     }
 
     @Test
@@ -755,18 +756,18 @@ class BoardIntegrationTest : IntegrationTestBase() {
         val p = post()
         val root = comment(p.id, anonymous = true)
         val reply = comment(p.id, author, parent = root.id)
-        assertEquals("익명1", root.author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 1, root.author!!.displayName)
 
         mockMvc.perform(delete("/api/v1/users/me").header("Authorization", bearer(jwt.createAccessToken(other))))
             .andExpect(status().isNoContent)
 
         assertEquals(0L, count("board_anonymous_users"))
         val retained = comments.list(p.id, null, "latest", 1, 20).items.single()
-        assertEquals("(탈퇴됨)", retained.author!!.displayName)
+        assertEquals(BoardPolicy.WITHDRAWN_AUTHOR_NAME, retained.author!!.displayName)
         assertFalse(retained.isPostAuthor)
         assertEquals(reply.id, retained.replies.single().id)
         val participant = dataGenerator.generateLocalUser().first.id!!
-        assertEquals("익명2", comment(p.id, participant, anonymous = true).author!!.displayName)
+        assertEquals(BoardPolicy.ANONYMOUS_AUTHOR_NAME + 2, comment(p.id, participant, anonymous = true).author!!.displayName)
         posts.delete(author, p.id)
         assertEquals(0L, count("board_comments"))
     }
@@ -787,7 +788,7 @@ class BoardIntegrationTest : IntegrationTestBase() {
         val listed = comments.list(p.id, null, "latest", 1, 20)
         assertEquals(2L, listed.totalComments)
         listed.items.forEach {
-            assertEquals("(탈퇴됨)", it.author!!.displayName)
+            assertEquals(BoardPolicy.WITHDRAWN_AUTHOR_NAME, it.author!!.displayName)
             assertFalse(it.isPostAuthor)
             assertFalse(it.isMine)
         }

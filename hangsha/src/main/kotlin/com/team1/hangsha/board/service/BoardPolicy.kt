@@ -13,6 +13,12 @@ object BoardPolicy {
     const val PAGE_SIZE_MAX = 100
     const val POPULAR_LIKES = 10
 
+    const val ANONYMOUS_AUTHOR_NAME = "익명"
+    const val ANONYMOUS_POST_AUTHOR_NAME = "익명(글쓴이)"
+    const val WITHDRAWN_AUTHOR_NAME = "(탈퇴됨)"
+    const val DEFAULT_AUTHOR_NAME = "사용자"
+    const val DELETED_COMMENT_CONTENT = "(삭제)"
+
     fun invalid(message: String): Nothing = throw DomainException(ErrorCode.INVALID_REQUEST, message)
 
     fun id(id: Long) {

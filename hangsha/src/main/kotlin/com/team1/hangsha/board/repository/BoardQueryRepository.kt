@@ -133,10 +133,10 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
 
     private fun author(rs: ResultSet, anonymous: Boolean, anonymousName: String? = null): AuthorResponse =
         AuthorResponse(
-            if (rs.getObject("user_id") == null) "(탈퇴됨)"
+            if (rs.getObject("user_id") == null) BoardPolicy.WITHDRAWN_AUTHOR_NAME
             else if (anonymous) anonymousName
-                ?: "익명${checkNotNull(rs.getObject("anonymous_number")) { "Missing anonymous mapping" }}"
-            else rs.getString("username") ?: "사용자",
+                ?: (BoardPolicy.ANONYMOUS_AUTHOR_NAME + checkNotNull(rs.getObject("anonymous_number")) { "Missing anonymous mapping" })
+            else rs.getString("username") ?: BoardPolicy.DEFAULT_AUTHOR_NAME,
         )
 
     private fun post(rs: ResultSet, viewer: Long?): PostRow {
@@ -147,7 +147,7 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
             rs.getString("content"),
             rs.getObject("visible_event_id")
                 ?.let { BoardEventResponse((it as Number).toLong(), rs.getString("event_title")) },
-            author(rs, anonymous, "익명"),
+            author(rs, anonymous, BoardPolicy.ANONYMOUS_AUTHOR_NAME),
             anonymous,
             rs.getLong("like_count"),
             rs.getLong("comment_count"),
@@ -167,8 +167,8 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
             rs.getLong("id"),
             rs.getLong("post_id"),
             rs.getObject("parent_id")?.let { (it as Number).toLong() },
-            if (deleted) "(삭제)" else rs.getString("content"),
-            if (deleted) null else author(rs, anonymous, if (isPostAuthor) "익명(글쓴이)" else null),
+            if (deleted) BoardPolicy.DELETED_COMMENT_CONTENT else rs.getString("content"),
+            if (deleted) null else author(rs, anonymous, if (isPostAuthor) BoardPolicy.ANONYMOUS_POST_AUTHOR_NAME else null),
             !deleted && anonymous,
             !deleted && isPostAuthor,
             !deleted && viewer != null && rs.getObject("user_id") != null && viewer == rs.getLong("user_id"),
