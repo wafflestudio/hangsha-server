@@ -1,16 +1,20 @@
 package com.team1.hangsha.event.service
 
+import com.team1.hangsha.board.repository.BoardQueryRepository
+import com.team1.hangsha.board.service.BoardPolicy
 import com.team1.hangsha.bookmark.repository.BookmarkRepository
 import com.team1.hangsha.common.error.DomainException
 import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.event.dto.core.EventDto
+import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.Calendar.MonthEventResponse
 import com.team1.hangsha.event.dto.response.DetailEventResponse
+import com.team1.hangsha.event.dto.response.DiscussedEventResponse
 import com.team1.hangsha.event.dto.response.EventCountResponse
-import com.team1.hangsha.event.dto.response.Calendar.DayEventResponse
 import com.team1.hangsha.event.dto.response.SearchEventItem
 import com.team1.hangsha.event.dto.response.SearchEventResponse
 import com.team1.hangsha.event.dto.response.SearchHighlight
+import com.team1.hangsha.event.dto.response.UpcomingEventResponse
 import com.team1.hangsha.event.model.Event
 import com.team1.hangsha.event.repository.EventQueryRepository
 import com.team1.hangsha.event.repository.EventRepository
@@ -18,21 +22,37 @@ import com.team1.hangsha.search.ManticoreSearchService
 import com.team1.hangsha.search.SearchHighlighter
 import com.team1.hangsha.user.repository.UserExcludedKeywordRepository
 import com.team1.hangsha.user.repository.UserInterestDomainRepository
-import org.jsoup.Jsoup
-import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.math.max
+import org.jsoup.Jsoup
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class EventService(
     private val eventRepository: EventRepository,
+    private val boardQueryRepository: BoardQueryRepository,
     private val eventQueryRepository: EventQueryRepository,
     private val userInterestDomainRepository: UserInterestDomainRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val manticoreSearchService: ManticoreSearchService,
     private val userExcludedKeywordRepository: UserExcludedKeywordRepository,
 ) {
+
+    @Transactional(readOnly = true)
+    fun discussed(size: Int): DiscussedEventResponse {
+        BoardPolicy.size(size)
+        return DiscussedEventResponse(boardQueryRepository.discussed(size))
+    }
+
+    @Transactional(readOnly = true)
+    fun upcoming(size: Int): UpcomingEventResponse {
+        BoardPolicy.size(size)
+        val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+        return UpcomingEventResponse(eventQueryRepository.findUpcoming(now, size))
+    }
 
     fun getMonthEvents(
         from: LocalDate,
