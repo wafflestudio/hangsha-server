@@ -9,7 +9,7 @@ import java.time.Instant
 data class BoardComment(
     @Id val id: Long? = null,
     val postId: Long,
-    val userId: Long,
+    val userId: Long?,
     val parentId: Long? = null,
     val content: String,
     val isAnonymous: Boolean = false,

@@ -36,20 +36,28 @@ import kotlin.test.*
 class BoardIntegrationTest : IntegrationTestBase() {
     @Autowired
     lateinit var posts: BoardPostService
+
     @Autowired
     lateinit var comments: BoardCommentService
+
     @Autowired
     lateinit var memos: MemoService
+
     @Autowired
     lateinit var bookmarks: BookmarkService
+
     @Autowired
     lateinit var users: UserRepository
+
     @Autowired
     lateinit var query: BoardQueryRepository
+
     @Autowired
     lateinit var eventQuery: EventQueryRepository
+
     @Autowired
     lateinit var jdbc: NamedParameterJdbcTemplate
+
     @Autowired
     lateinit var jwt: JwtTokenProvider
     var author = 0L
@@ -63,7 +71,10 @@ class BoardIntegrationTest : IntegrationTestBase() {
 
     private fun body(value: String): JsonNode = objectMapper.readTree(value)
     private fun post(anonymous: Boolean = false, event: Long? = null, tags: String = "[]"): PostDetailResponse =
-        posts.create(author, CreatePostRequest("제목", "글", event, objectMapper.readTree(tags).map { it.asText() }, anonymous))
+        posts.create(
+            author,
+            CreatePostRequest("제목", "글", event, objectMapper.readTree(tags).map { it.asText() }, anonymous)
+        )
 
     private fun comment(postId: Long, userId: Long = other, anonymous: Boolean = false, parent: Long? = null) =
         comments.create(
@@ -694,5 +705,97 @@ class BoardIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(get("/api/v1/events/discussed?size=0"))
             .andExpect(status().isBadRequest).andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         mockMvc.perform(get("/api/v1/events/upcoming?size=101")).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `회원 탈퇴 - 실명과 익명 글 및 댓글을 보존하고 작성자를 탈퇴됨으로 표시한다`() {
+        val realPost = post(tags = """["보존태그"]""")
+        val anonymousPost = post(anonymous = true)
+        val root = comment(realPost.id, author)
+        val anonymousRoot = comment(anonymousPost.id, author, anonymous = true)
+        val reply = comment(realPost.id, other, parent = root.id)
+        posts.like(author, realPost.id, true)
+        posts.like(other, realPost.id, true)
+        comments.like(author, reply.id, true)
+        comments.like(other, root.id, true)
+
+        mockMvc.perform(delete("/api/v1/users/me").header("Authorization", bearer(jwt.createAccessToken(author))))
+            .andExpect(status().isNoContent)
+
+        assertFalse(users.existsById(author))
+        listOf(realPost, anonymousPost).forEach { original ->
+            val detail = posts.detail(original.id, null)
+            assertEquals(original.content, detail.content)
+            assertEquals(original.tagNames, detail.tagNames)
+            assertEquals("(탈퇴됨)", detail.author.displayName)
+            assertFalse(detail.isMine)
+            assertTrue(posts.list(null, null, null, false, 1, 20).items.any { it.id == original.id })
+        }
+        listOf(root, anonymousRoot).forEach { original ->
+            val actual = query.comment(original.id, null)!!
+            assertEquals(original.content, actual.content)
+            assertEquals("(탈퇴됨)", actual.author!!.displayName)
+            assertFalse(actual.isPostAuthor)
+            assertFalse(actual.isMine)
+        }
+        assertEquals(1L, posts.detail(realPost.id, other).likeCount)
+        assertTrue(posts.detail(realPost.id, other).likedByMe)
+        assertEquals(1L, query.comment(root.id, other)!!.likeCount)
+        assertEquals(0L, query.comment(reply.id, other)!!.likeCount)
+        val listed = comments.list(realPost.id, null, "latest", 1, 20)
+        assertEquals(2L, listed.totalComments)
+        assertEquals(reply.id, listed.items.single().replies.single().id)
+        assertEquals("다른 사람", listed.items.single().replies.single().author!!.displayName)
+        mockMvc.perform(get("/api/v1/board/posts/${realPost.id}"))
+            .andExpect(status().isOk).andExpect(jsonPath("$.author.displayName").value("(탈퇴됨)"))
+    }
+
+    @Test
+    fun `회원 탈퇴 - 익명 댓글과 답글은 남기고 삭제된 익명 번호를 재사용하지 않는다`() {
+        val p = post()
+        val root = comment(p.id, anonymous = true)
+        val reply = comment(p.id, author, parent = root.id)
+        assertEquals("익명1", root.author!!.displayName)
+
+        mockMvc.perform(delete("/api/v1/users/me").header("Authorization", bearer(jwt.createAccessToken(other))))
+            .andExpect(status().isNoContent)
+
+        assertEquals(0L, count("board_anonymous_users"))
+        val retained = comments.list(p.id, null, "latest", 1, 20).items.single()
+        assertEquals("(탈퇴됨)", retained.author!!.displayName)
+        assertFalse(retained.isPostAuthor)
+        assertEquals(reply.id, retained.replies.single().id)
+        val participant = dataGenerator.generateLocalUser().first.id!!
+        assertEquals("익명2", comment(p.id, participant, anonymous = true).author!!.displayName)
+        posts.delete(author, p.id)
+        assertEquals(0L, count("board_comments"))
+    }
+
+    @Test
+    fun `회원 탈퇴 - 작성자 ID가 모두 null이어도 글쓴이 댓글로 판단하지 않는다`() {
+        val p = post()
+        val authorComment = comment(p.id, author, anonymous = true)
+        val otherComment = comment(p.id, other, anonymous = true)
+        assertTrue(query.comment(authorComment.id, null)!!.isPostAuthor)
+        mockMvc.perform(delete("/api/v1/users/me").header("Authorization", bearer(jwt.createAccessToken(author))))
+            .andExpect(status().isNoContent)
+        assertFalse(query.comment(authorComment.id, null)!!.isPostAuthor)
+        assertFalse(query.comment(otherComment.id, null)!!.isPostAuthor)
+        mockMvc.perform(delete("/api/v1/users/me").header("Authorization", bearer(jwt.createAccessToken(other))))
+            .andExpect(status().isNoContent)
+
+        val listed = comments.list(p.id, null, "latest", 1, 20)
+        assertEquals(2L, listed.totalComments)
+        listed.items.forEach {
+            assertEquals("(탈퇴됨)", it.author!!.displayName)
+            assertFalse(it.isPostAuthor)
+            assertFalse(it.isMine)
+        }
+        assertFalse(query.comment(otherComment.id, null)!!.isPostAuthor)
+        val participant = dataGenerator.generateLocalUser().first.id!!
+        assertFalse(comment(p.id, participant, anonymous = true).isPostAuthor)
+        posts.like(participant, p.id, true)
+        assertEquals(1L, posts.detail(p.id, participant).likeCount)
+        error(ErrorCode.POST_NOT_FOUND) { posts.update(participant, p.id, body("""{"title":"수정"}""")) }
     }
 }

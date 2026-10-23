@@ -16,7 +16,7 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
           (SELECT COUNT(*) FROM board_comments c WHERE c.post_id = p.id AND c.is_deleted = false) AS comment_count,
           EXISTS(SELECT 1 FROM board_post_likes l WHERE l.post_id = p.id AND l.user_id = :viewer) AS liked_by_me
         FROM board_posts p
-        JOIN users u ON u.id = p.user_id
+        LEFT JOIN users u ON u.id = p.user_id
         LEFT JOIN events e ON e.id = p.event_id AND e.admin_deleted = false
     """.trimIndent()
 
@@ -85,7 +85,7 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
         SELECT c.*, u.username, a.anonymous_number, p.user_id AS post_author_id,
           (SELECT COUNT(*) FROM board_comment_likes l WHERE l.comment_id = c.id) AS like_count,
           EXISTS(SELECT 1 FROM board_comment_likes l WHERE l.comment_id = c.id AND l.user_id = :viewer) AS liked_by_me
-        FROM board_comments c JOIN board_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
+        FROM board_comments c JOIN board_posts p ON p.id = c.post_id LEFT JOIN users u ON u.id = c.user_id
         LEFT JOIN board_anonymous_users a ON a.post_id = c.post_id AND a.user_id = c.user_id
     """.trimIndent()
 
@@ -131,10 +131,13 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
     """.trimIndent(), mapOf("size" to size)
     ) { rs, _ -> DiscussedEventItem(rs.getLong("id"), rs.getString("title"), rs.getLong("post_count")) }
 
-    private fun author(rs: ResultSet, anonymous: Boolean, anonymousName: String? = null): AuthorResponse = AuthorResponse(
-        if (anonymous) anonymousName ?: "익명${checkNotNull(rs.getObject("anonymous_number")) { "Missing anonymous mapping" }}"
-        else rs.getString("username") ?: "사용자",
-    )
+    private fun author(rs: ResultSet, anonymous: Boolean, anonymousName: String? = null): AuthorResponse =
+        AuthorResponse(
+            if (rs.getObject("user_id") == null) "(탈퇴됨)"
+            else if (anonymous) anonymousName
+                ?: "익명${checkNotNull(rs.getObject("anonymous_number")) { "Missing anonymous mapping" }}"
+            else rs.getString("username") ?: "사용자",
+        )
 
     private fun post(rs: ResultSet, viewer: Long?): PostRow {
         val anonymous = rs.getBoolean("is_anonymous")
@@ -149,7 +152,7 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
             rs.getLong("like_count"),
             rs.getLong("comment_count"),
             rs.getBoolean("liked_by_me"),
-            viewer == rs.getLong("user_id"),
+            viewer != null && rs.getObject("user_id") != null && viewer == rs.getLong("user_id"),
             rs.getTimestamp("created_at").toInstant(),
             rs.getTimestamp("updated_at").toInstant(),
         )
@@ -158,7 +161,8 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
     private fun comment(rs: ResultSet, viewer: Long?): CommentResponse {
         val deleted = rs.getBoolean("is_deleted")
         val anonymous = rs.getBoolean("is_anonymous")
-        val isPostAuthor = rs.getLong("user_id") == rs.getLong("post_author_id")
+        val isPostAuthor = rs.getObject("user_id") != null && rs.getObject("post_author_id") != null &&
+                rs.getLong("user_id") == rs.getLong("post_author_id")
         return CommentResponse(
             rs.getLong("id"),
             rs.getLong("post_id"),
@@ -167,7 +171,7 @@ class BoardQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
             if (deleted) null else author(rs, anonymous, if (isPostAuthor) "익명(글쓴이)" else null),
             !deleted && anonymous,
             !deleted && isPostAuthor,
-            !deleted && viewer == rs.getLong("user_id"),
+            !deleted && viewer != null && rs.getObject("user_id") != null && viewer == rs.getLong("user_id"),
             deleted,
             if (deleted) 0 else rs.getLong("like_count"),
             !deleted && rs.getBoolean("liked_by_me"),

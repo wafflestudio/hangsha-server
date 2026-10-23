@@ -9,7 +9,7 @@ import java.time.Instant
 @Table("board_posts")
 data class BoardPost(
     @Id val id: Long? = null,
-    val userId: Long,
+    val userId: Long?,
     val eventId: Long? = null,
     val title: String,
     val content: String,
