@@ -28,7 +28,7 @@ class ReviewQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
         val safePage = maxOf(page, 1); val safeSize = size.coerceIn(1, 100); val offset = (safePage - 1L) * safeSize
         val params = mapOf("eventId" to eventId, "viewer" to viewer, "size" to safeSize, "offset" to offset)
         val total = jdbc.queryForObject("SELECT COUNT(*) FROM reviews WHERE event_id = :eventId AND is_deleted = false", params, Long::class.java) ?: 0
-        val items = jdbc.query("$reviewSelect WHERE r.event_id = :eventId ORDER BY r.created_at DESC, r.id DESC LIMIT :size OFFSET :offset", params) { rs, _ -> review(rs, viewer) }
+        val items = jdbc.query("$reviewSelect WHERE r.event_id = :eventId AND r.is_deleted = false ORDER BY r.created_at DESC, r.id DESC LIMIT :size OFFSET :offset", params) { rs, _ -> review(rs, viewer) }
         return ReviewPageResponse(safePage, safeSize, total, items)
     }
 
