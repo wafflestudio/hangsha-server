@@ -83,4 +83,11 @@ enum class ErrorCode(
     UPLOAD_FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드할 파일이 없습니다"),
     UPLOAD_UNSUPPORTED_MEDIA_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다"),
     UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다"),
+
+    // App version
+    APP_VERSION_NOT_FOUND(HttpStatus.NOT_FOUND, "등록되지 않은 앱 버전입니다."),
+    APP_VERSION_UNSUPPORTED_PLATFORM(HttpStatus.BAD_REQUEST, "지원하지 않는 플랫폼입니다"),
+    APP_VERSION_INVALID_VERSION_CODE(HttpStatus.BAD_REQUEST, "버전 코드는 1 이상이어야 합니다"),
+    APP_VERSION_AVAILABLE_VERSION_CODE_REQUIRED(HttpStatus.BAD_REQUEST, "android는 availableVersionCode가 필요합니다"),
+    APP_VERSION_MINIMUM_EXCEEDS_VERSION(HttpStatus.BAD_REQUEST, "최소 지원 버전 코드는 등록할 버전 코드보다 클 수 없습니다"),
 }
