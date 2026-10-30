@@ -7,6 +7,8 @@ import com.team1.hangsha.common.enums.Semester
 import com.team1.hangsha.course.model.Course
 import com.team1.hangsha.course.model.CourseTimeSlot
 import com.team1.hangsha.event.model.Event
+import com.team1.hangsha.memo.model.Memo
+import com.team1.hangsha.memo.model.MemoTagRef
 import com.team1.hangsha.tag.model.Tag
 import com.team1.hangsha.timetable.model.Enroll
 import com.team1.hangsha.timetable.model.Timetable
@@ -19,6 +21,7 @@ import com.team1.hangsha.category.repository.OrganizationRepository
 import com.team1.hangsha.course.repository.CourseRepository
 import com.team1.hangsha.course.repository.CourseTimeSlotRepository
 import com.team1.hangsha.event.repository.EventRepository
+import com.team1.hangsha.memo.repository.MemoRepository
 import com.team1.hangsha.tag.repository.TagRepository
 import com.team1.hangsha.timetable.repository.EnrollRepository
 import com.team1.hangsha.timetable.repository.TimetableRepository
@@ -44,6 +47,7 @@ class DataGenerator(
     private val eventRepository: EventRepository,
 
     private val tagRepository: TagRepository,
+    private val memoRepository: MemoRepository,
 
     private val timetableRepository: TimetableRepository,
     private val courseRepository: CourseRepository,
@@ -219,6 +223,32 @@ class DataGenerator(
         )
     }
 
+    /**
+     * @MappedCollection(tags) 기반이라 Memo 저장 시 tagRefs를 넣어주면 memo_tags에 같이 반영됨.
+     * - tagIds는 이미 생성된 Tag들의 id를 받는게 가장 안전(테스트에서 명시적)
+     */
+    fun generateMemo(
+        user: User? = null,
+        event: Event? = null,
+        content: String? = null,
+        tagIds: List<Long> = emptyList(),
+    ): Memo {
+        val n = next()
+        val u = user ?: generateUserWithAccessToken().first
+        val e = event ?: generateEvent()
+
+        val tagRefs = tagIds.map { MemoTagRef(tagId = it) }.toSet()
+
+        return memoRepository.save(
+            Memo(
+                userId = u.id!!,
+                eventId = e.id!!,
+                content = content ?: "memo-$n",
+                tags = tagRefs,
+            ),
+        )
+    }
+
     // ----------------------------
     // Courses / CourseTimeSlot
     // ----------------------------
@@ -333,6 +363,7 @@ class DataGenerator(
         timetableRepository.deleteAll()
         courseRepository.deleteAll()
 
+        memoRepository.deleteAll()
         tagRepository.deleteAll()
 
         userInterestDomainRepository.deleteAll()
