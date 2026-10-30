@@ -1,90 +1,167 @@
 package com.team1.hangsha.review.repository
 
-import com.team1.hangsha.review.dto.*
+import com.team1.hangsha.review.dto.ReviewCommentResponse
+import com.team1.hangsha.review.dto.ReviewResponse
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 
+private const val UNKNOWN_AUTHOR = "알 수 없음"
+
+/**
+ * 후기·댓글 조회 SQL은 여기서만 만든다.
+ * 지워진 후기와 관리자가 지운 행사(events.admin_deleted) 조건을 빠뜨리지 않기 위해서다.
+ */
 @Repository
-class ReviewQueryRepository(private val jdbc: NamedParameterJdbcTemplate) {
+class ReviewQueryRepository(
+    private val jdbc: NamedParameterJdbcTemplate,
+) {
     private val reviewSelect = """
-        SELECT r.*, u.username,
-          (SELECT COUNT(*) FROM review_likes l WHERE l.review_id = r.id) AS like_count,
-          (SELECT COUNT(*) FROM review_comments c WHERE c.review_id = r.id AND c.is_deleted = false) AS comment_count,
-          EXISTS(SELECT 1 FROM review_likes l WHERE l.review_id = r.id AND l.user_id = :viewer) AS liked_by_me
-        FROM reviews r LEFT JOIN users u ON u.id = r.user_id
+        SELECT r.id, r.event_id, e.title AS event_title, r.user_id, r.rating, r.content,
+               r.is_anonymous, r.is_edited, r.created_at,
+               u.username, a.seq AS anon_seq,
+               (SELECT COUNT(*) FROM review_likes l WHERE l.review_id = r.id) AS like_count,
+               (SELECT COUNT(*) FROM review_comments c
+                 WHERE c.review_id = r.id AND c.is_deleted = FALSE) AS comment_count,
+               EXISTS(SELECT 1 FROM review_likes l
+                       WHERE l.review_id = r.id AND l.user_id = :viewerId) AS is_liked
+        FROM reviews r
+        JOIN events e ON e.id = r.event_id
+        JOIN users u ON u.id = r.user_id
+        LEFT JOIN review_anon_aliases a ON a.event_id = r.event_id AND a.user_id = r.user_id
+        WHERE r.is_deleted = FALSE
+          AND e.admin_deleted = FALSE
     """.trimIndent()
 
     private val commentSelect = """
-        SELECT c.*, u.username, a.anonymous_number, r.user_id AS review_author_id,
-          (SELECT COUNT(*) FROM review_comment_likes l WHERE l.comment_id = c.id) AS like_count,
-          EXISTS(SELECT 1 FROM review_comment_likes l WHERE l.comment_id = c.id AND l.user_id = :viewer) AS liked_by_me
-        FROM review_comments c JOIN reviews r ON r.id = c.review_id
-        LEFT JOIN users u ON u.id = c.user_id
-        LEFT JOIN review_anon_aliases a ON a.review_id = c.review_id AND a.user_id = c.user_id
+        SELECT c.id, c.review_id, c.parent_id, c.user_id, c.content,
+               c.is_anonymous, c.is_edited, c.is_deleted, c.created_at,
+               r.user_id AS review_user_id, u.username, a.seq AS anon_seq,
+               (SELECT COUNT(*) FROM review_comment_likes l WHERE l.comment_id = c.id) AS like_count,
+               EXISTS(SELECT 1 FROM review_comment_likes l
+                       WHERE l.comment_id = c.id AND l.user_id = :viewerId) AS is_liked
+        FROM review_comments c
+        JOIN reviews r ON r.id = c.review_id
+        JOIN events e ON e.id = r.event_id
+        JOIN users u ON u.id = c.user_id
+        LEFT JOIN review_anon_aliases a ON a.event_id = r.event_id AND a.user_id = c.user_id
+        WHERE r.is_deleted = FALSE
+          AND e.admin_deleted = FALSE
     """.trimIndent()
 
-    fun reviews(eventId: Long, viewer: Long?, page: Int, size: Int): ReviewPageResponse {
-        val safePage = maxOf(page, 1); val safeSize = size.coerceIn(1, 100); val offset = (safePage - 1L) * safeSize
-        val params = mapOf("eventId" to eventId, "viewer" to viewer, "size" to safeSize, "offset" to offset)
-        val total = jdbc.queryForObject("SELECT COUNT(*) FROM reviews WHERE event_id = :eventId AND is_deleted = false", params, Long::class.java) ?: 0
-        val items = jdbc.query("$reviewSelect WHERE r.event_id = :eventId AND r.is_deleted = false ORDER BY r.created_at DESC, r.id DESC LIMIT :size OFFSET :offset", params) { rs, _ -> review(rs, viewer) }
-        return ReviewPageResponse(safePage, safeSize, total, items)
-    }
+    /** 행사 후기 전체, 최신순. */
+    fun findEventReviews(eventId: Long, viewerId: Long?): List<ReviewResponse> =
+        jdbc.query(
+            "$reviewSelect AND r.event_id = :eventId ORDER BY r.created_at DESC, r.id DESC",
+            mapOf("eventId" to eventId, "viewerId" to viewerId),
+        ) { rs, _ -> mapReview(rs, viewerId) }
 
-    fun review(id: Long, viewer: Long?): ReviewResponse? = jdbc.query(
-        "$reviewSelect WHERE r.id = :id", mapOf("id" to id, "viewer" to viewer),
-    ) { rs, _ -> review(rs, viewer) }.singleOrNull()
+    /** 내 후기 전체, 최신순. */
+    fun findUserReviews(userId: Long): List<ReviewResponse> =
+        jdbc.query(
+            "$reviewSelect AND r.user_id = :userId ORDER BY r.created_at DESC, r.id DESC",
+            mapOf("userId" to userId, "viewerId" to userId),
+        ) { rs, _ -> mapReview(rs, userId) }
 
-    fun myReviews(userId: Long, page: Int, size: Int): ReviewPageResponse {
-        val safePage = maxOf(page, 1); val safeSize = size.coerceIn(1, 100); val offset = (safePage - 1L) * safeSize
-        val params = mapOf("userId" to userId, "viewer" to userId, "size" to safeSize, "offset" to offset)
-        val where = "r.user_id = :userId AND r.is_deleted = false AND e.admin_deleted = false"
-        val total = jdbc.queryForObject("SELECT COUNT(*) FROM reviews r JOIN events e ON e.id = r.event_id WHERE $where", params, Long::class.java) ?: 0
-        val items = jdbc.query("$reviewSelect JOIN events e ON e.id = r.event_id WHERE $where ORDER BY r.created_at DESC, r.id DESC LIMIT :size OFFSET :offset", params) { rs, _ -> review(rs, userId) }
-        return ReviewPageResponse(safePage, safeSize, total, items)
-    }
+    fun findReview(reviewId: Long, viewerId: Long?): ReviewResponse? =
+        jdbc.query(
+            "$reviewSelect AND r.id = :reviewId",
+            mapOf("reviewId" to reviewId, "viewerId" to viewerId),
+        ) { rs, _ -> mapReview(rs, viewerId) }.firstOrNull()
 
-    fun comments(reviewId: Long, viewer: Long?): List<ReviewCommentResponse> {
-        val roots = jdbc.query(
-            "$commentSelect WHERE c.review_id = :reviewId AND c.parent_id IS NULL ORDER BY c.created_at ASC, c.id ASC",
-            mapOf("reviewId" to reviewId, "viewer" to viewer),
-        ) { rs, _ -> comment(rs, viewer) }
-        if (roots.isEmpty()) return emptyList()
-        val replies = jdbc.query(
-            "$commentSelect WHERE c.parent_id IN (:ids) ORDER BY c.created_at ASC, c.id ASC",
-            mapOf("ids" to roots.map { it.id }, "viewer" to viewer),
-        ) { rs, _ -> comment(rs, viewer) }.groupBy { it.parentId }
-        return roots.map { it.copy(replies = replies[it.id].orEmpty()) }
-    }
+    /**
+     * 댓글과 답글을 평평한 목록으로, 작성순.
+     * 지운 댓글은 살아 있는 답글이 있을 때만 자리로 남고, 지운 답글은 빠진다.
+     */
+    fun findComments(reviewId: Long, viewerId: Long?): List<ReviewCommentResponse> =
+        jdbc.query(
+            """
+            $commentSelect
+              AND c.review_id = :reviewId
+              AND (
+                c.is_deleted = FALSE
+                OR (
+                  c.parent_id IS NULL
+                  AND EXISTS(SELECT 1 FROM review_comments x
+                              WHERE x.parent_id = c.id AND x.is_deleted = FALSE)
+                )
+              )
+            ORDER BY c.created_at ASC, c.id ASC
+            """.trimIndent(),
+            mapOf("reviewId" to reviewId, "viewerId" to viewerId),
+        ) { rs, _ -> mapComment(rs, viewerId) }
 
-    fun comment(id: Long, viewer: Long?): ReviewCommentResponse? = jdbc.query(
-        "$commentSelect WHERE c.id = :id", mapOf("id" to id, "viewer" to viewer),
-    ) { rs, _ -> comment(rs, viewer) }.singleOrNull()
+    fun findComment(commentId: Long, viewerId: Long?): ReviewCommentResponse? =
+        jdbc.query(
+            "$commentSelect AND c.id = :commentId",
+            mapOf("commentId" to commentId, "viewerId" to viewerId),
+        ) { rs, _ -> mapComment(rs, viewerId) }.firstOrNull()
 
-    private fun review(rs: ResultSet, viewer: Long?): ReviewResponse {
-        val deleted = rs.getBoolean("is_deleted"); val anonymous = rs.getBoolean("is_anonymous")
+    private fun mapReview(rs: ResultSet, viewerId: Long?): ReviewResponse {
+        val isAnonymous = rs.getBoolean("is_anonymous")
         return ReviewResponse(
-            rs.getLong("id"), rs.getLong("event_id"), rs.getInt("rating"),
-            if (deleted) "삭제된 후기입니다." else rs.getString("content"),
-            if (deleted || anonymous) null else ReviewAuthorResponse(rs.getString("username") ?: "알 수 없음"),
-            !deleted && anonymous, !deleted && viewer != null && viewer == rs.getLong("user_id"), deleted, !deleted && rs.getBoolean("is_edited"),
-            if (deleted) 0 else rs.getLong("like_count"), !deleted && rs.getBoolean("liked_by_me"), if (deleted) 0 else rs.getLong("comment_count"),
-            rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
+            id = rs.getLong("id"),
+            eventId = rs.getLong("event_id"),
+            eventTitle = rs.getString("event_title"),
+            rating = rs.getInt("rating"),
+            content = rs.getString("content"),
+            authorName = authorName(rs, isAnonymous),
+            isAnonymous = isAnonymous,
+            isMine = viewerId != null && viewerId == rs.getLong("user_id"),
+            isEdited = rs.getBoolean("is_edited"),
+            likeCount = rs.getLong("like_count"),
+            isLiked = rs.getBoolean("is_liked"),
+            commentCount = rs.getLong("comment_count"),
+            createdAt = rs.getTimestamp("created_at").toInstant(),
         )
     }
 
-    private fun comment(rs: ResultSet, viewer: Long?): ReviewCommentResponse {
-        val deleted = rs.getBoolean("is_deleted"); val anonymous = rs.getBoolean("is_anonymous")
-        val authorIsReviewAuthor = rs.getLong("user_id") == rs.getLong("review_author_id")
-        val name = if (authorIsReviewAuthor) "작성자" else "익명${rs.getLong("anonymous_number")}" 
+    private fun mapComment(rs: ResultSet, viewerId: Long?): ReviewCommentResponse {
+        val userId = rs.getLong("user_id")
+        val isAnonymous = rs.getBoolean("is_anonymous")
+        val isReviewAuthor = userId == rs.getLong("review_user_id")
+        val createdAt = rs.getTimestamp("created_at").toInstant()
+        val parentId = rs.getLong("parent_id").takeUnless { rs.wasNull() }
+
+        // 지운 댓글 자리는 내용·작성자·좋아요를 모두 감춘다.
+        if (rs.getBoolean("is_deleted")) {
+            return ReviewCommentResponse(
+                id = rs.getLong("id"),
+                reviewId = rs.getLong("review_id"),
+                parentId = parentId,
+                content = null,
+                authorName = null,
+                isAnonymous = false,
+                isMine = false,
+                isReviewAuthor = false,
+                isEdited = false,
+                isDeleted = true,
+                likeCount = 0,
+                isLiked = false,
+                createdAt = createdAt,
+            )
+        }
+
         return ReviewCommentResponse(
-            rs.getLong("id"), rs.getLong("review_id"), rs.getObject("parent_id")?.let { (it as Number).toLong() },
-            if (deleted) "삭제된 댓글입니다." else rs.getString("content"),
-            if (deleted) null else if (anonymous) ReviewAuthorResponse(name) else ReviewAuthorResponse(rs.getString("username") ?: "알 수 없음"),
-            !deleted && anonymous, !deleted && authorIsReviewAuthor, !deleted && viewer != null && viewer == rs.getLong("user_id"), deleted,
-            !deleted && rs.getBoolean("is_edited"), if (deleted) 0 else rs.getLong("like_count"), !deleted && rs.getBoolean("liked_by_me"),
-            rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
+            id = rs.getLong("id"),
+            reviewId = rs.getLong("review_id"),
+            parentId = parentId,
+            content = rs.getString("content"),
+            authorName = authorName(rs, isAnonymous),
+            isAnonymous = isAnonymous,
+            isMine = viewerId != null && viewerId == userId,
+            isReviewAuthor = isReviewAuthor,
+            isEdited = rs.getBoolean("is_edited"),
+            isDeleted = false,
+            likeCount = rs.getLong("like_count"),
+            isLiked = rs.getBoolean("is_liked"),
+            createdAt = createdAt,
         )
+    }
+
+    private fun authorName(rs: ResultSet, isAnonymous: Boolean): String {
+        if (!isAnonymous) return rs.getString("username") ?: UNKNOWN_AUTHOR
+        val seq = rs.getInt("anon_seq")
+        return if (rs.wasNull()) "익명" else "익명$seq"
     }
 }
