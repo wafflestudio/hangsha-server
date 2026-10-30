@@ -48,10 +48,6 @@ enum class ErrorCode(
     TAG_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 태그 이름입니다"),
     TAG_NAME_CANNOT_BE_BLANK(HttpStatus.BAD_REQUEST, "태그 이름은 비워둘 수 없습니다"),
 
-    // Memo
-    MEMO_NOT_FOUND(HttpStatus.NOT_FOUND, "메모를 찾을 수 없습니다"),
-    MEMO_CONTENT_CANNOT_BE_BLANK(HttpStatus.BAD_REQUEST, "메모 내용은 비워둘 수 없습니다"),
-
     // Review
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "후기를 찾을 수 없습니다"),
     REVIEW_COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다"),
