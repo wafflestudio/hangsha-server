@@ -52,6 +52,14 @@ enum class ErrorCode(
     MEMO_NOT_FOUND(HttpStatus.NOT_FOUND, "메모를 찾을 수 없습니다"),
     MEMO_CONTENT_CANNOT_BE_BLANK(HttpStatus.BAD_REQUEST, "메모 내용은 비워둘 수 없습니다"),
 
+    // Review
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "후기를 찾을 수 없습니다"),
+    REVIEW_COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다"),
+    REVIEW_FORBIDDEN(HttpStatus.FORBIDDEN, "본인이 작성한 글만 수정·삭제할 수 있습니다"),
+    REVIEW_PATCH_EMPTY(HttpStatus.BAD_REQUEST, "수정할 항목이 없습니다"),
+    REVIEW_CONTENT_CANNOT_BE_BLANK(HttpStatus.BAD_REQUEST, "내용은 비워둘 수 없습니다"),
+    REVIEW_INVALID_PARENT(HttpStatus.BAD_REQUEST, "답글을 달 수 없는 댓글입니다"),
+
     // Timetable / Enroll / Course
     TIMETABLE_NOT_FOUND(HttpStatus.NOT_FOUND, "시간표를 찾을 수 없습니다"),
     TIMETABLE_NAME_CANNOT_BE_BLANK(HttpStatus.BAD_REQUEST, "시간표 이름은 비워둘 수 없습니다"),
