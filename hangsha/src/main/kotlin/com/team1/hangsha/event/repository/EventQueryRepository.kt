@@ -1,18 +1,34 @@
 package com.team1.hangsha.event.repository
 
+import com.team1.hangsha.event.dto.response.UpcomingEventItem
 import com.team1.hangsha.event.model.Event
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.math.max
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.stereotype.Repository
 
 @Repository
 class EventQueryRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) {
+    fun findUpcoming(now: LocalDateTime, size: Int): List<UpcomingEventItem> =
+        jdbc.query(
+            """
+                SELECT id, title, apply_end FROM events
+                WHERE admin_deleted = false AND apply_end > :now
+                  AND (apply_start IS NULL OR apply_start <= :now)
+                ORDER BY apply_end ASC, id ASC LIMIT :size
+            """.trimIndent(),
+            mapOf("now" to Timestamp.valueOf(now), "size" to size),
+        ) { rs, _ ->
+            UpcomingEventItem(
+                rs.getLong("id"), rs.getString("title"), rs.getTimestamp("apply_end").toLocalDateTime(),
+            )
+        }
+
     fun findInRange(
         fromStart: LocalDateTime,
         toEndExclusive: LocalDateTime,
