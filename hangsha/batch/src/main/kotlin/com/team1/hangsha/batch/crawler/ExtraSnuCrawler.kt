@@ -12,6 +12,7 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 import com.team1.hangsha.common.upload.OciUploadService
 import org.jsoup.parser.Parser
@@ -33,6 +34,7 @@ class ExtraSnuCrawler(
         .followRedirects(true)
         .build(),
 ) : AutoCloseable {
+    private val log = LoggerFactory.getLogger(javaClass)
 
     // ✅ 상세(NetFunnel)는 JS 실행이 필요 → Playwright로 처리
     private val playwright: Playwright = Playwright.create()
@@ -260,10 +262,12 @@ class ExtraSnuCrawler(
                 page.waitForTimeout(400.0 + Math.random() * 600.0)
             }
 
-            if (debug) println("[PW] FAIL timeout waiting for detail dataSeq=$dataSeq lastUrl=${page.url()}")
+            log.warn("[PW] FAIL timeout waiting for detail dataSeq={} lastUrl={}", dataSeq, page.url())
             null
         } catch (e: Exception) {
-            if (debug) println("[PW] FAIL dataSeq=$dataSeq : ${e::class.simpleName} ${e.message}")
+            // Playwright 예외 메시지는 여러 줄이다. 줄마다 따로 수집되면 레벨 없는 줄이 생기므로 한 줄로 편다.
+            val reason = e.message.orEmpty().replace(Regex("\\s+"), " ").trim()
+            log.warn("[PW] FAIL dataSeq={} : {} {}", dataSeq, e::class.simpleName, reason)
             null
         } finally {
             runCatching { page.close() }
