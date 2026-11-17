@@ -5,4 +5,6 @@ import com.team1.hangsha.user.model.User
 
 interface UserRepository : CrudRepository<User, Long> {
     fun findByEmail(email: String): User?
+
+    fun existsByEmail(email: String): Boolean
 }

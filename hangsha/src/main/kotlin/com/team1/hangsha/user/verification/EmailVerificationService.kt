@@ -5,6 +5,7 @@ import com.team1.hangsha.common.error.ErrorCode
 import com.team1.hangsha.user.TokenHasher
 import com.team1.hangsha.user.model.AuthProvider
 import com.team1.hangsha.user.repository.UserIdentityRepository
+import com.team1.hangsha.user.repository.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -22,6 +23,7 @@ class EmailVerificationService(
     private val emailSender: EmailSender,
     private val tokenHasher: TokenHasher,
     private val userIdentityRepository: UserIdentityRepository,
+    private val userRepository: UserRepository,
     private val properties: EmailVerificationProperties,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -33,7 +35,12 @@ class EmailVerificationService(
     fun sendCode(rawEmail: String): Instant {
         val email = normalize(rawEmail)
 
-        if (userIdentityRepository.existsByProviderAndEmail(AuthProvider.LOCAL, email)) {
+        // users.email은 가입 방식과 무관하게 유일하다. LOCAL identity만 보면 소셜로 가입된
+        // 이메일이 인증까지 통과한 뒤 계정 생성에서야 실패한다.
+        if (
+            userRepository.existsByEmail(email) ||
+            userIdentityRepository.existsByProviderAndEmail(AuthProvider.LOCAL, email)
+        ) {
             throw DomainException(ErrorCode.USER_EMAIL_ALREADY_EXISTS)
         }
 
