@@ -49,6 +49,10 @@ class SecurityConfig(
 
             .authorizeHttpRequests { auth ->
                 auth
+                    // 후기 조회는 공개지만, 작성·수정·삭제·좋아요는 반드시 로그인해야 한다.
+                    // /api/v1/events/** 공개 규칙보다 먼저 선언해야 POST가 우회되지 않는다.
+                    .requestMatchers(HttpMethod.POST, "/api/v1/events/*/reviews").authenticated()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/events/*/reviews", "/api/v1/reviews/*/comments").permitAll()
                     // public path
                     .requestMatchers(
                         // 문서
