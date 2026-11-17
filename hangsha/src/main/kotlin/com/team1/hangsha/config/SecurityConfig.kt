@@ -61,6 +61,8 @@ class SecurityConfig(
                         "/api/v1/mobile/auth/**",
                         "/openapi.yaml/**",
                         "/api/v1/health",
+                        // 앱 업데이트 안내
+                        "/api/v1/app-version",
                         // Discord verifies requests at the controller with its Ed25519 signature.
                         "/api/v1/discord/interactions",
                         // 행사

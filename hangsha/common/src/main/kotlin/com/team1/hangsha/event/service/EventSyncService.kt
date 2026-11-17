@@ -414,7 +414,6 @@ class EventSyncService(
     // @TODO: 하드 코딩이긴 한데, 일단 이렇게 구현.
     private val nonOverridableEventFields = setOf(
         "id",
-        "applyLink",
         "createdAt",
         "adminOverriddenFields",
         "adminDeleted",
@@ -628,7 +627,7 @@ class EventSyncService(
 
             organization = req.organization?.trim() ?: existing.organization,
             location = req.location?.trim() ?: existing.location,
-            applyLink = existing.applyLink, // matching key이므로 수정 X
+            applyLink = req.applyLink?.trim() ?: existing.applyLink,
         )
 
         val saved = eventRepository.save(updated)

@@ -1,5 +1,6 @@
 package com.team1.hangsha.helper
 
+import com.team1.hangsha.appversion.repository.AppVersionRepository
 import com.team1.hangsha.board.repository.BoardPostRepository
 import com.team1.hangsha.board.repository.BoardRelationsRepository
 import com.team1.hangsha.category.model.Organization
@@ -53,6 +54,8 @@ class DataGenerator(
     private val courseRepository: CourseRepository,
     private val courseTimeSlotRepository: CourseTimeSlotRepository,
     private val enrollRepository: EnrollRepository,
+
+    private val appVersionRepository: AppVersionRepository,
 ) {
     companion object {
         private val seq = AtomicLong(1L)
@@ -377,5 +380,7 @@ class DataGenerator(
 
         userIdentityRepository.deleteAll()
         userRepository.deleteAll()
+
+        appVersionRepository.deleteAll()
     }
 }
